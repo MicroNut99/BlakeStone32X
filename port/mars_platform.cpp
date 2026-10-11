@@ -20,7 +20,6 @@ extern "C" void bs32x_music_tick(void);
 namespace {
 
 uint8_t vga_page[320 * 208] __attribute__((aligned(16)));
-uint8_t pal8[768] __attribute__((aligned(4)));
 volatile unsigned vbl_acc = 0;
 char last_log[64];
 
@@ -109,6 +108,11 @@ const PadKey pad_keys[] = {
 };
 
 } // namespace
+
+extern "C" {
+uint8_t bs32x_pal8[768] __attribute__((aligned(4)));
+}
+#define pal8 bs32x_pal8
 
 int bstone_main(int argc, char* argv[]);
 

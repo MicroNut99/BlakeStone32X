@@ -1389,14 +1389,58 @@ const int WHITESTEPS = 20;
 const int WHITETICS = 6;
 
 
+#ifndef BS32X
 uint8_t redshifts[NUMREDSHIFTS][768];
 uint8_t whiteshifts[NUMREDSHIFTS][768];
+#else
+// BlakeStone32X: one shifted palette is made when needed (saves 9 KB of RAM)
+static uint8_t bs32x_shift_pal[768];
+
+static const uint8_t* bs32x_red_shift(int i)
+{
+    const uint8_t* baseptr = vgapal;
+    uint8_t* workptr = bs32x_shift_pal;
+    for (int j = 0; j <= 255; ++j) {
+        int delta = 64 - baseptr[0];
+        workptr[0] = static_cast<uint8_t>(baseptr[0] + ((delta * i) / REDSTEPS));
+        delta = -baseptr[1];
+        workptr[1] = static_cast<uint8_t>(baseptr[1] + ((delta * i) / REDSTEPS));
+        delta = -baseptr[2];
+        workptr[2] = static_cast<uint8_t>(baseptr[2] + ((delta * i) / REDSTEPS));
+        baseptr += 3;
+        workptr += 3;
+    }
+    return bs32x_shift_pal;
+}
+#endif
 
 int damagecount;
 int bonuscount;
 bool palshifted;
 
 
+#ifdef BS32X
+static const uint8_t* bs32x_white_shift(int i)
+{
+    const uint8_t* baseptr = vgapal;
+    uint8_t* workptr = bs32x_shift_pal;
+    for (int j = 0; j <= 255; ++j) {
+        int delta = 64 - baseptr[0];
+        workptr[0] = static_cast<uint8_t>(baseptr[0] + ((delta * i) / WHITESTEPS));
+        delta = 62 - baseptr[1];
+        workptr[1] = static_cast<uint8_t>(baseptr[1] + ((delta * i) / WHITESTEPS));
+        delta = 0 - baseptr[2];
+        workptr[2] = static_cast<uint8_t>(baseptr[2] + ((delta * i) / WHITESTEPS));
+        baseptr += 3;
+        workptr += 3;
+    }
+    return bs32x_shift_pal;
+}
+
+void InitRedShifts()
+{
+}
+#else
 void InitRedShifts()
 {
     //
@@ -1452,6 +1496,8 @@ void InitRedShifts()
         }
     }
 }
+
+#endif
 
 void ClearPaletteShifts()
 {
@@ -1510,11 +1556,19 @@ void UpdatePaletteShifts()
 
     if (red > 0) {
         VW_WaitVBL(1);
+#ifdef BS32X
+        VL_SetPalette(0, 256, bs32x_red_shift(red), false);
+#else
         VL_SetPalette(0, 256, redshifts[red - 1], false);
+#endif
         palshifted = true;
     } else if (white > 0) {
         VW_WaitVBL(1);
+#ifdef BS32X
+        VL_SetPalette(0, 256, bs32x_white_shift(white), false);
+#else
         VL_SetPalette(0, 256, whiteshifts[white - 1], false);
+#endif
         palshifted = true;
     } else if (palshifted) {
         VW_WaitVBL(1);

@@ -2891,9 +2891,16 @@ extern int16_t mouseadjustment;
 // math tables
 //
 extern int* pixelangle;
+#ifdef BS32X
+// BlakeStone32X: constant tables in ROM (port/bs32x_trig.inc)
+extern const int finetangent[FINEANGLES / 4];
+extern const int sintable[];
+extern const int* costable;
+#else
 extern int finetangent[FINEANGLES / 4];
 extern int sintable[];
 extern int* costable;
+#endif
 
 //
 // derived constants

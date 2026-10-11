@@ -5,12 +5,30 @@
 #include <new>
 
 void bs32x_fatal(const char* what);
+extern "C" unsigned bs32x_heap_used(void);
+
+static void out_of_memory(std::size_t n)
+{
+    // "OUT OF MEMORY <request> HEAP <used>"
+    static char msg[48] = "OUT OF MEMORY ";
+    char* p = msg + 14;
+    auto put = [&p](unsigned v) {
+        char t[12]; int k = 0;
+        do { t[k++] = static_cast<char>('0' + v % 10); v /= 10; } while (v);
+        while (k) *p++ = t[--k];
+    };
+    put(static_cast<unsigned>(n));
+    for (const char* s = " HEAP "; *s; ) *p++ = *s++;
+    put(bs32x_heap_used());
+    *p = '\0';
+    bs32x_fatal(msg);
+}
 
 void* operator new(std::size_t n)
 {
     void* p = std::malloc(n ? n : 1);
     if (!p) {
-        bs32x_fatal("OUT OF MEMORY");
+        out_of_memory(n);
     }
     return p;
 }

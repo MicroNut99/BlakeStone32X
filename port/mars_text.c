@@ -7,7 +7,6 @@
 
 extern const uint8_t font8x8[];
 
-static uint8_t stop_pal[768];
 
 static void put(int x, int y, const char *s)
 {
@@ -30,8 +29,8 @@ static void put(int x, int y, const char *s)
     }
 }
 
-static char lines[24][41];
-static int ys[24];
+static char lines[8][41];
+static int ys[8];
 static int nlines;
 
 void bs32x_text_clear(void)
@@ -42,15 +41,19 @@ void bs32x_text_clear(void)
 void bs32x_text(int x, int y, const char *s)
 {
     int pass;
-    if (nlines < 24) {
+    if (nlines < 8) {
         strncpy(lines[nlines], s, 40);
         lines[nlines][40] = 0;
         ys[nlines] = y;
         nlines++;
     }
-    memset(stop_pal, 0, sizeof(stop_pal));
-    stop_pal[765] = stop_pal[766] = stop_pal[767] = 255;
-    Mars_SetPalette(stop_pal);
+    {
+        /* colour 0 black, 255 white: reuse the game palette buffer */
+        extern uint8_t bs32x_pal8[768];
+        memset(bs32x_pal8, 0, 768);
+        bs32x_pal8[765] = bs32x_pal8[766] = bs32x_pal8[767] = 255;
+        Mars_SetPalette(bs32x_pal8);
+    }
     for (pass = 0; pass < 2; pass++) {
         uint32_t *p = (uint32_t *)(&MARS_FRAMEBUFFER + 0x100);
         int n = 320 * 224 / 4, i;

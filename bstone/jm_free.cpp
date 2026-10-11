@@ -201,6 +201,7 @@ void BuildTables()
     fixed value;
 
 
+#ifndef BS32X   // BlakeStone32X: tables are constants (port/bs32x_trig.inc)
 //
 // calculate fine tangents
 //
@@ -231,6 +232,10 @@ void BuildTables()
         angle += anglestep;
     }
 
+#else
+    static_cast<void>(i); static_cast<void>(angle); static_cast<void>(anglestep);
+    static_cast<void>(tang); static_cast<void>(value);
+#endif
     lightsource = colormap;
 }
 
@@ -512,7 +517,9 @@ void CheckForEpisodes()
         "EANIM.BS6",
         "GANIM.BS6",
 #endif
+#ifndef BS32X_MARS
         "IANIM.BS6",
+#endif
         "MAPHEAD.BS6",
         "MAPTEMP.BS6",
 #ifndef BS32X
@@ -756,7 +763,12 @@ void PreDemo()
 
         // Show JAM logo
         //
+#ifdef BS32X_MARS
+        // BlakeStone32X: no room for the JAM logo animation on the 32X
+        if (false) {
+#else
         if (!DoMovie(mv_intro, 0)) {
+#endif
 #ifndef BS32X
             ::Quit("JAM animation (IANIM.xxx) does not exist.");
 #endif

@@ -3,8 +3,8 @@
 # Needs a PC C++ compiler too: the PC test build makes LATCHES.BS6 and GREXP.BS6.
 ROOTDIR  ?= $(GENDEV)
 GAMEDIR  ?= ../BLAKE
-NAME     ?= BlakeStone32X_B6
-TITLE    ?= BLAKE STONE 32X B6
+NAME     ?= BlakeStone32X_B6b
+TITLE    ?= BLAKE STONE 32X B6B
 
 PREFIX = $(ROOTDIR)/sh-elf/bin/sh-elf-
 CC = $(PREFIX)gcc
@@ -16,7 +16,7 @@ B = build-game
 INT32 = -U__INT32_TYPE__ -D__INT32_TYPE__=int -U__UINT32_TYPE__ -D__UINT32_TYPE__=unsigned \
         -U__INT_LEAST32_TYPE__ -D__INT_LEAST32_TYPE__=int -U__UINT_LEAST32_TYPE__ -D__UINT_LEAST32_TYPE__=unsigned
 CFLAGS = -c -m2 -mb -Os -fomit-frame-pointer -ffunction-sections -fdata-sections -D__32X__ -DMARS \
-         $(INT32) -Imars -Isrc -Iport
+         $(INT32) -Imars -Isrc -Iport -DBS32X_MARS
 CXXFLAGS = $(CFLAGS) -std=c++14 -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit \
            -D_GLIBCXX_ASSERTIONS -DBS32X -Ibstone -include bs32x.h -w
 LDFLAGS = -T mars/mars-ssf.ld -Wl,-Map=$(B)/game.map -nostdlib -Wl,--gc-sections --specs=nosys.specs -Wl,--allow-multiple-definition
@@ -33,7 +33,7 @@ OBJS = $(B)/crt0.o $(B)/mars_main.o $(B)/marshw.o $(B)/sh2_fixed.o $(B)/font.o $
        $(addprefix $(B)/,$(addsuffix .o,$(GAME)))
 
 DATA = $(B)/data/VSWAP.BS6 $(B)/data/VGAHEAD.BS6 $(B)/data/VGADICT.BS6 $(B)/data/VGAGRAPH.BS6 \
-       $(B)/data/GREXP.BS6 $(B)/data/IANIM.BS6 $(B)/data/MAPHEAD.BS6 $(B)/data/MAPTEMP.BS6 \
+       $(B)/data/GREXP.BS6 $(B)/data/MAPHEAD.BS6 $(B)/data/MAPTEMP.BS6 \
        $(B)/data/AUDIOHED.BS6 $(B)/data/AUDIOT.BS6 $(B)/data/LATCHES.BS6
 
 all: $(B)/$(NAME).32x

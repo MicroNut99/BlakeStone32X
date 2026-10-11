@@ -431,7 +431,7 @@ static void* track_alloc(size_t n, void* site)
     p[0] = n;
     p[1] = (mem_ignore || in_track) ? 0 : 1;
     if (p[1] && n >= 4096 && std::getenv("BS32X_MEMLOG")) {
-        std::fprintf(stderr, "NEW %zu from %p\n", n, site);
+        std::fprintf(stderr, "NEW %zu from %p live-before %zu\n", n, site, mem_now);
     }
     if (p[1]) {
         mem_now += n;

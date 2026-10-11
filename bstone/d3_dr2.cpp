@@ -46,7 +46,11 @@ void HitHorizPWall();
 void HitVertPWall();
 
 
+#ifdef BS32X
+extern const int finetangent[FINEANGLES / 4];
+#else
 extern int finetangent[FINEANGLES / 4];
+#endif
 extern int viewwidth;
 extern uint8_t tilemap[MAPSIZE][MAPSIZE];
 extern uint8_t spotvis[MAPSIZE][MAPSIZE];

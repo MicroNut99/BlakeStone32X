@@ -105,9 +105,14 @@ fixed mindist = MINDIST;
 // math tables
 //
 int* pixelangle = nullptr;
+#ifdef BS32X
+#include "bs32x_trig.inc"
+const int* costable = &sintable[ANGLES / 4];
+#else
 int finetangent[FINEANGLES / 4];
 int sintable[ANGLES + (ANGLES / 4) + 1];
 int* costable = &sintable[ANGLES / 4];
+#endif
 
 //
 // refresh variables
