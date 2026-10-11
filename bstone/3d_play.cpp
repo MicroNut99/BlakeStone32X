@@ -102,7 +102,7 @@ bool singlestep = false;
 bool godmode; // ,noclip;
 
 uint8_t tilemap[MAPSIZE][MAPSIZE]; // wall values only
-uint8_t spotvis[MAPSIZE][MAPSIZE];
+uint8_t spotvis[MAPSIZE][MAPSIZE] __attribute__((aligned(4)));
 objtype* actorat[MAPSIZE][MAPSIZE];
 
 
@@ -1721,6 +1721,9 @@ void PlayLoop()
 {
     bool reset_areas = false;
     objtype* obj;
+#ifdef BS32X
+    Bs32xInputMode input_mode(demoplayback ? BS32X_IN_UI : BS32X_IN_PLAY);
+#endif
 
     lasttimecount = 0;
     TimeCount = 0;

@@ -20,10 +20,11 @@ static void run_constructors(void)
     }
 }
 
-/* heap for malloc: from the end of bss up to 12 KB below the primary stack */
+/* heap for malloc: from the end of bss up to 10 KB below the primary stack
+   (the game used about 6 KB of stack in tests) */
 extern char end;
 static char *heap_top = &end;
-#define HEAP_LIMIT ((char *)0x0603C400)
+#define HEAP_LIMIT ((char *)0x0603D000)
 
 void *_sbrk(int incr)
 {
@@ -43,8 +44,22 @@ unsigned bs32x_heap_used(void)
 
 int main(void)
 {
+    {
+        /* mark the stack room, to see later how deep the stack went */
+        volatile unsigned *p = (volatile unsigned *)HEAP_LIMIT;
+        while ((char *)p < (char *)0x0603F000) {
+            *p++ = 0x5AA55AA5u;
+        }
+    }
     static char arg0[] = "bstone";
+#ifdef BS32X_AUTOSTART
+    static char arg1[] = "--no_screens";    /* speed-test build: no intro screens */
+    static char *argv[] = { arg0, arg1, 0 };
+    const int argc = 2;
+#else
     static char *argv[] = { arg0, 0 };
+    const int argc = 1;
+#endif
 
     Mars_Init();
     Mars_InitVideo(224);
@@ -56,7 +71,7 @@ int main(void)
         mars_vblank_hook = bs32x_vblank;
     }
     run_constructors();
-    bs32x_game_main(1, argv);
+    bs32x_game_main(argc, argv);
     for (;;) {
     }
     return 0;
@@ -64,6 +79,6 @@ int main(void)
 
 void secondary(void)
 {
-    for (;;) {
-    }
+    extern void bs32x_second_loop(void);
+    bs32x_second_loop();
 }

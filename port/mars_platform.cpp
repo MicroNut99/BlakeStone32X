@@ -89,23 +89,58 @@ struct PadKey {
     char ascii;
 };
 
-/* A fire / select, B use (open), C strafe, START menu (Esc),
-   X run, Y next weapon, Z status (Tab), MODE Enter */
-const PadKey pad_keys[] = {
+/* menus and screens: A / C / START choose, B / MODE back */
+const PadKey ui_keys[] = {
+    {SEGA_CTRL_UP, ScanCode::sc_up_arrow, 0},
+    {SEGA_CTRL_DOWN, ScanCode::sc_down_arrow, 0},
+    {SEGA_CTRL_LEFT, ScanCode::sc_left_arrow, 0},
+    {SEGA_CTRL_RIGHT, ScanCode::sc_right_arrow, 0},
+    {SEGA_CTRL_A, ScanCode::sc_return, 13},
+    {SEGA_CTRL_C, ScanCode::sc_return, 13},
+    {SEGA_CTRL_START, ScanCode::sc_return, 13},
+    {SEGA_CTRL_B, ScanCode::sc_escape, 27},
+    {SEGA_CTRL_MODE, ScanCode::sc_escape, 27},
+};
+
+/* yes/no questions: A / C / START yes, B / MODE no */
+const PadKey confirm_keys[] = {
+    {SEGA_CTRL_A, ScanCode::sc_y, 'y'},
+    {SEGA_CTRL_C, ScanCode::sc_y, 'y'},
+    {SEGA_CTRL_START, ScanCode::sc_y, 'y'},
+    {SEGA_CTRL_B, ScanCode::sc_n, 'n'},
+    {SEGA_CTRL_MODE, ScanCode::sc_n, 'n'},
+};
+
+/* playing: A fire, B open/use, C strafe, X run, Y next weapon,
+   Z / MODE status, START menu */
+const PadKey play_keys[] = {
     {SEGA_CTRL_UP, ScanCode::sc_up_arrow, 0},
     {SEGA_CTRL_DOWN, ScanCode::sc_down_arrow, 0},
     {SEGA_CTRL_LEFT, ScanCode::sc_left_arrow, 0},
     {SEGA_CTRL_RIGHT, ScanCode::sc_right_arrow, 0},
     {SEGA_CTRL_A, ScanCode::sc_control, 0},
-    {SEGA_CTRL_A, ScanCode::sc_return, 13},
-    {SEGA_CTRL_A, ScanCode::sc_y, 'y'},
     {SEGA_CTRL_B, ScanCode::sc_space, ' '},
     {SEGA_CTRL_C, ScanCode::sc_alt, 0},
-    {SEGA_CTRL_START, ScanCode::sc_escape, 27},
     {SEGA_CTRL_X, ScanCode::sc_left_shift, 0},
     {SEGA_CTRL_Z, ScanCode::sc_tab, 9},
-    {SEGA_CTRL_MODE, ScanCode::sc_return, 13},
+    {SEGA_CTRL_MODE, ScanCode::sc_tab, 9},
+    {SEGA_CTRL_START, ScanCode::sc_escape, 27},
 };
+
+struct PadMap {
+    const PadKey* keys;
+    int count;
+};
+
+const PadMap pad_maps[3] = {
+    {ui_keys, int(sizeof(ui_keys) / sizeof(ui_keys[0]))},
+    {play_keys, int(sizeof(play_keys) / sizeof(play_keys[0]))},
+    {confirm_keys, int(sizeof(confirm_keys) / sizeof(confirm_keys[0]))},
+};
+
+int in_mode = BS32X_IN_UI;
+
+const int dpad_mask = SEGA_CTRL_UP | SEGA_CTRL_DOWN | SEGA_CTRL_LEFT | SEGA_CTRL_RIGHT;
 
 } // namespace
 
@@ -179,17 +214,121 @@ void bs32x_vid_set_palette(const unsigned char* pal)
     Mars_SetPalette(pal8);
 }
 
-/* copy the page to the 32X back buffer (rows 0..199 -> lines 12..211) and flip */
+/* ---------- second SH2 ---------- */
+/* COMM4: 1 = draw your half of the 3D view, 2 = show the page, 0 = done */
+
+#include "bs32x_render.h"
+
+namespace {
+
+const uint32_t* present_src = nullptr;   /* page rows to show (set before a job 2) */
+
+/* copy the page rows to the 32X back buffer (lines 12..211) and ask for the
+   flip at the next vblank; the copy waits for the previous flip first,
+   because until then the back buffer is still on screen */
+void copy_and_flip(const uint32_t* src)
+{
+    Mars_WaitFrameBuffersFlip();
+    uint32_t* dst = reinterpret_cast<uint32_t*>(0x24000200 + 12 * 320);
+    int n = 320 * 200 / 16;
+    do {
+        uint32_t a = src[0];
+        uint32_t b = src[1];
+        uint32_t c = src[2];
+        uint32_t d = src[3];
+        dst[0] = a;
+        dst[1] = b;
+        dst[2] = c;
+        dst[3] = d;
+        src += 4;
+        dst += 4;
+    } while (--n);
+    Mars_FlipFrameBuffers(0);
+}
+
+bool second_busy = false;
+
+} // namespace
+
+extern "C" void bs32x_second_loop(void)
+{
+    volatile uint16_t* comm4 = reinterpret_cast<volatile uint16_t*>(&MARS_SYS_COMM4);
+    for (;;) {
+        int cmd;
+        while ((cmd = *comm4) != 1 && cmd != 2) {
+        }
+        CacheControl(SH2_CCTL_CP | SH2_CCTL_CE);   /* see the first CPU's latest data */
+        if (cmd == 1) {
+            bs32x_render_second();
+        } else {
+            copy_and_flip(present_src);
+        }
+        *comm4 = 0;
+    }
+}
+
+void bs32x_second_cpu_wait(void)
+{
+    if (!second_busy) {
+        return;
+    }
+    volatile uint16_t* comm4 = reinterpret_cast<volatile uint16_t*>(&MARS_SYS_COMM4);
+    while (*comm4 != 0) {
+    }
+    second_busy = false;
+    CacheControl(SH2_CCTL_CP | SH2_CCTL_CE);       /* see what the second CPU did */
+}
+
+bool bs32x_second_cpu_start(void)
+{
+    bs32x_second_cpu_wait();
+    second_busy = true;
+    MARS_SYS_COMM4 = 1;
+    return true;
+}
+
+bool bs32x_present_async = false;
+
+/* the two CPUs meet during a frame: COMM4 3 = second CPU's walls done,
+   4 = go on with the floor and ceiling, 5 = its floors done, 6 = go on with
+   the sprites */
+void bs32x_sync_first(int ready, int go)
+{
+    volatile uint16_t* comm4 = reinterpret_cast<volatile uint16_t*>(&MARS_SYS_COMM4);
+    while (*comm4 != ready) {
+    }
+    CacheControl(SH2_CCTL_CP | SH2_CCTL_CE);       /* see what the second CPU wrote */
+    *comm4 = static_cast<uint16_t>(go);
+}
+
+void bs32x_sync_second(int ready, int go)
+{
+    volatile uint16_t* comm4 = reinterpret_cast<volatile uint16_t*>(&MARS_SYS_COMM4);
+    *comm4 = static_cast<uint16_t>(ready);
+    while (*comm4 != go) {
+    }
+    CacheControl(SH2_CCTL_CP | SH2_CCTL_CE);
+}
+
+extern "C" {
+volatile uint32_t bs32x_present_count;   /* screens shown (for speed tests) */
+}
+
+/* show the page (rows 0..199 -> lines 12..211); during play the second CPU
+   does it while the first goes on with the next frame */
 void bs32x_vid_present(int displayofs)
 {
+    ++bs32x_present_count;
     const uint32_t* src = reinterpret_cast<const uint32_t*>(
         vga_page + ((4 * displayofs) % (320 * 208)));
-    uint32_t* dst = reinterpret_cast<uint32_t*>(0x24000200 + 12 * 320);   /* frame buffer pixels */
-    int n = 320 * 200 / 4;
-    do {
-        *dst++ = *src++;
-    } while (--n);
-    Mars_FlipFrameBuffers(1);
+    bs32x_second_cpu_wait();
+    if (bs32x_present_async) {
+        present_src = src;
+        second_busy = true;
+        MARS_SYS_COMM4 = 2;
+        return;
+    }
+    copy_and_flip(src);
 }
 
 void bs32x_vid_wait_vbl(int vbls)
@@ -214,14 +353,41 @@ void bs32x_in_update(void)
     int pad = pad_now;
     int changed = pad ^ pad_prev;
     if (changed) {
-        for (const auto& k : pad_keys) {
+        const PadMap& m = pad_maps[in_mode];
+        for (int i = 0; i < m.count; ++i) {
+            const PadKey& k = m.keys[i];
             if (changed & k.mask) {
                 bool down = (pad & k.mask) != 0;
                 bs32x_in_key(static_cast<int>(k.code), down, down ? k.ascii : 0);
             }
         }
+        if (in_mode == BS32X_IN_PLAY && (changed & pad & SEGA_CTRL_Y)) {
+            bs32x_next_weapon = true;
+        }
         pad_prev = pad;
     }
+}
+
+volatile bool bs32x_next_weapon = false;
+
+/* a new pad meaning: let go of the buttons of the old one; a button that is
+   still held only counts after it is pressed again (the d-pad carries over) */
+int bs32x_set_input_mode(int mode)
+{
+    int old = in_mode;
+    if (mode == old || mode < 0 || mode > 2) {
+        return old;
+    }
+    const PadMap& m = pad_maps[old];
+    for (int i = 0; i < m.count; ++i) {
+        const PadKey& k = m.keys[i];
+        if ((pad_prev & k.mask & ~dpad_mask) != 0) {
+            bs32x_in_key(static_cast<int>(k.code), false, 0);
+        }
+    }
+    in_mode = mode;
+    bs32x_next_weapon = false;
+    return old;
 }
 
 bool bs32x_file_open_read(const char* name, const void** data, long* size)

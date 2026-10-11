@@ -34,7 +34,12 @@ static bool vl_latch_writable = false;
 static inline int vl_fold(
     int offset)
 {
-    return offset < vl_latch_start ? offset % vl_page_bytes : offset;
+    if (offset < vl_latch_start) {
+        while (offset >= vl_page_bytes) {
+            offset -= vl_page_bytes;
+        }
+    }
+    return offset;
 }
 
 static inline uint8_t* vl_ptr(
@@ -99,7 +104,7 @@ void VL_RefreshScreen()
 // Copies the buffer page to the display page, then shows it (as BStone's soft_update_screen)
 void VH_UpdateScreen()
 {
-    if (::displayofs != ::bufferofs) {
+    if (::vl_get_offset(::displayofs) != ::vl_get_offset(::bufferofs)) {
         std::uninitialized_copy_n(
             vl_ptr(::vl_get_offset(::bufferofs)),
             ::vga_area,
@@ -283,21 +288,20 @@ void VL_SetPaletteIntensity(
     ::VL_SetPalette(start, end - start + 1, &::palette1[0][0]);
 }
 
+// (the port always runs with vga_scale 1)
+uint8_t* vl_page_ptr(
+    int x,
+    int y)
+{
+    return vl_ptr(::vl_get_offset(::bufferofs, x, y));
+}
+
 void VL_Plot(
     int x,
     int y,
     uint8_t color)
 {
-    int offset = ::vl_get_offset(::bufferofs, x, y);
-
-    for (int i = 0; i < vga_scale; ++i) {
-        std::uninitialized_fill_n(
-            vl_ptr(offset),
-            ::vga_scale,
-            color);
-
-        offset += ::vga_width;
-    }
+    *vl_page_ptr(x, y) = color;
 }
 
 void VL_Hlin(
@@ -382,11 +386,15 @@ void VL_MemToScreen(
     int x,
     int y)
 {
+    uint8_t* base = vl_page_ptr(x, y);
+
     for (int p = 0; p < 4; ++p) {
+        uint8_t* row = base + p;
         for (int h = 0; h < height; ++h) {
             for (int w = p; w < width; w += 4) {
-                ::VL_Plot(x + w, y + h, *source++);
+                row[w - p] = *source++;
             }
+            row += ::vga_width;
         }
     }
 }
@@ -399,15 +407,19 @@ void VL_MaskMemToScreen(
     int y,
     uint8_t mask)
 {
+    uint8_t* base = vl_page_ptr(x, y);
+
     for (int p = 0; p < 4; ++p) {
+        uint8_t* row = base + p;
         for (int h = 0; h < height; ++h) {
             for (int w = p; w < width; w += 4) {
                 uint8_t color = *source++;
 
                 if (color != mask) {
-                    ::VL_Plot(x + w, y + h, color);
+                    row[w - p] = color;
                 }
             }
+            row += ::vga_width;
         }
     }
 }

@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstddef>
 #include <new>
+#include <malloc.h>
 
 void bs32x_fatal(const char* what);
 extern "C" unsigned bs32x_heap_used(void);
@@ -10,7 +11,7 @@ extern "C" unsigned bs32x_heap_used(void);
 static void out_of_memory(std::size_t n)
 {
     // "OUT OF MEMORY <request> HEAP <used>"
-    static char msg[48] = "OUT OF MEMORY ";
+    static char msg[80] = "OUT OF MEMORY ";
     char* p = msg + 14;
     auto put = [&p](unsigned v) {
         char t[12]; int k = 0;
@@ -20,6 +21,11 @@ static void out_of_memory(std::size_t n)
     put(static_cast<unsigned>(n));
     for (const char* s = " HEAP "; *s; ) *p++ = *s++;
     put(bs32x_heap_used());
+    struct mallinfo mi = mallinfo();      // in use / free inside the heap
+    for (const char* s = " USE "; *s; ) *p++ = *s++;
+    put(static_cast<unsigned>(mi.uordblks));
+    for (const char* s = " FREE "; *s; ) *p++ = *s++;
+    put(static_cast<unsigned>(mi.fordblks));
     *p = '\0';
     bs32x_fatal(msg);
 }

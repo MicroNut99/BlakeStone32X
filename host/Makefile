@@ -7,9 +7,9 @@ GAME = 3d_act1 3d_act2 3d_agent 3d_debug 3d_draw 3d_draw2 3d_game 3d_inter 3d_ma
        scale stub vgapal bstone_binary_reader bstone_binary_writer bstone_cl_args \
        bstone_crc32 bstone_istream bstone_memory_binary_reader bstone_memory_stream \
        bstone_string_helper
-PORT = vl_port file_stream_port host_platform
+PORT = vl_port file_stream_port host_platform bs32x_render
 OBJ = $(addprefix obj/,$(addsuffix .o,$(GAME) $(PORT))) obj/lz4d.o
-CXXFLAGS = -std=c++14 -O1 -g -fno-exceptions -DBS32X -I../port -I../bstone -include bs32x.h -w
+CXXFLAGS = -MMD -MP -std=c++14 -O1 -g -fno-exceptions -DBS32X -I../port -I../bstone -include bs32x.h -w
 
 bstone_host: $(OBJ)
 	$(CXX) -o $@ $(OBJ)
@@ -24,3 +24,5 @@ obj:
 	mkdir -p obj
 clean:
 	rm -rf obj bstone_host
+
+-include $(OBJ:.o=.d)

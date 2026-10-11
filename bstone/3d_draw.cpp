@@ -23,6 +23,9 @@ Free Software Foundation, Inc.,
 
 
 #include "3d_def.h"
+#ifdef BS32X
+#include "bs32x_render.h"
+#endif
 
 
 #define MASKABLE_DOORS (0)
@@ -422,7 +425,11 @@ int CalcHeight()
         nx = mindist; // don't let divide overflow
 
     }
+#ifdef BS32X
+    int result = bs32x_div(heightnumerator, nx / 256);
+#else
     int result = heightnumerator / (nx / 256);
+#endif
 
     if (result < 8) {
         result = 8;
@@ -1412,6 +1419,9 @@ void MapLSRow();
 
 void ThreeDRefresh()
 {
+#ifdef BS32X
+    bs32x_second_cpu_wait();    // the last frame is shown (copied) before drawing
+#endif
     memset(spotvis, 0, sizeof(spotvis));
 
 #ifndef PAGEFLIP
@@ -1427,6 +1437,30 @@ void ThreeDRefresh()
 // follow the walls from there to the right, drawwing as we go
 //
 
+#ifdef BS32X
+    // BlakeStone32X: walls, floor and ceiling on both CPUs (bs32x_render.cpp)
+    if (bs32x_fast_render) {
+        const int fc = gamestate.flags & (GS_DRAW_FLOOR | GS_DRAW_CEILING);
+        const bool lit = (gamestate.flags & GS_LIGHTING) != 0;
+
+        if (fc == (GS_DRAW_FLOOR | GS_DRAW_CEILING)) {
+            MapRowPtr = lit ? MapLSRow : MapRow;
+            bs32x_render_frame(true);
+        } else {
+            if (fc == GS_DRAW_FLOOR) {
+                MapRowPtr = lit ? F_MapLSRow : F_MapRow;
+            } else if (fc == GS_DRAW_CEILING) {
+                MapRowPtr = lit ? C_MapLSRow : C_MapRow;
+            }
+            VGAClearScreen();
+            bs32x_render_frame(false);
+            if (fc != 0) {
+                DrawPlanes();
+            }
+        }
+    } else
+#endif
+    {
     if (gamestate.flags & GS_LIGHTING) {
         switch (gamestate.flags & (GS_DRAW_FLOOR | GS_DRAW_CEILING)) {
         case GS_DRAW_FLOOR | GS_DRAW_CEILING:
@@ -1483,6 +1517,8 @@ void ThreeDRefresh()
         }
     }
 
+    }
+
     UpdateTravelTable();
 
 //
@@ -1490,6 +1526,9 @@ void ThreeDRefresh()
 //
 
     DrawScaleds(); // draw scaled stuf
+#ifdef BS32X
+    bs32x_render_sprites();
+#endif
 
     DrawPlayerWeapon(); // draw player's hands
 
@@ -1515,7 +1554,13 @@ void ThreeDRefresh()
 #endif
 
     // BBi
+#ifdef BS32X
+    bs32x_present_async = true;
     VL_RefreshScreen();
+    bs32x_present_async = false;
+#else
+    VL_RefreshScreen();
+#endif
 
     frameon++;
 }
@@ -1531,10 +1576,19 @@ int16_t NextBuffer()
     return 0;
 }
 
-uint8_t TravelTable[MAPSIZE][MAPSIZE];
+uint8_t TravelTable[MAPSIZE][MAPSIZE] __attribute__((aligned(4)));
 
 void UpdateTravelTable()
 {
+#ifdef BS32X
+    // four tiles per step
+    uint32_t* t = reinterpret_cast<uint32_t*>(&TravelTable[0][0]);
+    const uint32_t* v = reinterpret_cast<const uint32_t*>(&spotvis[0][0]);
+    for (int i = 0; i < (MAPSIZE * MAPSIZE) / 4; ++i) {
+        t[i] |= v[i];
+    }
+    return;
+#endif
     for (int i = 0; i < MAPSIZE; ++i) {
         for (int j = 0; j < MAPSIZE; ++j) {
             TravelTable[i][j] |= spotvis[i][j];

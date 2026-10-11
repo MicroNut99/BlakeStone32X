@@ -1650,6 +1650,11 @@ void in_set_default_bindings()
 
     in_bindings[e_bi_forward][0] = ScanCode::sc_w;
     in_bindings[e_bi_backward][0] = ScanCode::sc_s;
+#ifdef BS32X
+    // BlakeStone32X: the pad's d-pad sends the arrow keys
+    in_bindings[e_bi_forward][1] = ScanCode::sc_up_arrow;
+    in_bindings[e_bi_backward][1] = ScanCode::sc_down_arrow;
+#endif
     in_bindings[e_bi_left][0] = ScanCode::sc_left_arrow;
     in_bindings[e_bi_right][0] = ScanCode::sc_right_arrow;
     in_bindings[e_bi_strafe][0] = ScanCode::sc_alt;

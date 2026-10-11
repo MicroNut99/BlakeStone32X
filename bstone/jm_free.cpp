@@ -933,6 +933,9 @@ void InvalidLevels()
 
     CA_CacheGrChunk(BADLEVELSTEXT);
     chunkptr = static_cast<char*>(grsegs[BADLEVELSTEXT]);
+#ifdef BS32X
+    if (!bs32x_is_rom(chunkptr))
+#endif
     *(strstr(chunkptr, "^XX")) = 0;
 
     fprint(chunkptr);

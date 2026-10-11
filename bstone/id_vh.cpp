@@ -66,6 +66,21 @@ void VW_DrawPropString(
         const uint8_t* source =
             (reinterpret_cast<const uint8_t*>(font)) + bs32x_le16(&font->location[ch]);
 
+#ifdef BS32X
+        uint8_t* dst = vl_page_ptr(px, py);
+        const uint8_t color = fontcolor;
+
+        for (int h = 0; h < height; ++h) {
+            for (int w = 0; w < width; ++w) {
+                if (source[w] != 0) {
+                    dst[w] = color;
+                }
+            }
+
+            source += width;
+            dst += vga_width;
+        }
+#else
         for (int w = 0; w < width; ++w) {
             for (int h = 0; h < height; ++h) {
                 if (source[h * width] != 0) {
@@ -75,6 +90,8 @@ void VW_DrawPropString(
 
             ++source;
         }
+
+#endif
 
         px = static_cast<int16_t>(px + width);
     }

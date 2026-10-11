@@ -3,8 +3,8 @@
 # Needs a PC C++ compiler too: the PC test build makes LATCHES.BS6 and GREXP.BS6.
 ROOTDIR  ?= $(GENDEV)
 GAMEDIR  ?= ../BLAKE
-NAME     ?= BlakeStone32X_B6b
-TITLE    ?= BLAKE STONE 32X B6B
+NAME     ?= BlakeStone32X_B7
+TITLE    ?= BLAKE STONE 32X B7
 
 PREFIX = $(ROOTDIR)/sh-elf/bin/sh-elf-
 CC = $(PREFIX)gcc
@@ -15,8 +15,8 @@ B = build-game
 
 INT32 = -U__INT32_TYPE__ -D__INT32_TYPE__=int -U__UINT32_TYPE__ -D__UINT32_TYPE__=unsigned \
         -U__INT_LEAST32_TYPE__ -D__INT_LEAST32_TYPE__=int -U__UINT_LEAST32_TYPE__ -D__UINT_LEAST32_TYPE__=unsigned
-CFLAGS = -c -m2 -mb -Os -fomit-frame-pointer -ffunction-sections -fdata-sections -D__32X__ -DMARS \
-         $(INT32) -Imars -Isrc -Iport -DBS32X_MARS
+CFLAGS = -c -MMD -MP -m2 -mb -Os -fomit-frame-pointer -ffunction-sections -fdata-sections -D__32X__ -DMARS \
+         $(INT32) -Imars -Isrc -Iport -DBS32X_MARS $(EXTRA)
 CXXFLAGS = $(CFLAGS) -std=c++14 -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit \
            -D_GLIBCXX_ASSERTIONS -DBS32X -Ibstone -include bs32x.h -w
 LDFLAGS = -T mars/mars-ssf.ld -Wl,-Map=$(B)/game.map -nostdlib -Wl,--gc-sections --specs=nosys.specs -Wl,--allow-multiple-definition
@@ -29,7 +29,7 @@ GAME = 3d_act1 3d_act2 3d_agent 3d_debug 3d_draw 3d_draw2 3d_game 3d_inter 3d_ma
        bstone_crc32 bstone_istream bstone_memory_binary_reader bstone_memory_stream \
        bstone_string_helper
 OBJS = $(B)/crt0.o $(B)/mars_main.o $(B)/marshw.o $(B)/sh2_fixed.o $(B)/font.o $(B)/mars_text.o \
-       $(B)/lz4d.o $(B)/cxxrt.o $(B)/vl_port.o $(B)/file_stream_port.o $(B)/mars_platform.o \
+       $(B)/lz4d.o $(B)/cxxrt.o $(B)/r_asm.o $(B)/bs32x_render.o $(B)/vl_port.o $(B)/file_stream_port.o $(B)/mars_platform.o \
        $(addprefix $(B)/,$(addsuffix .o,$(GAME)))
 
 DATA = $(B)/data/VSWAP.BS6 $(B)/data/VGAHEAD.BS6 $(B)/data/VGADICT.BS6 $(B)/data/VGAGRAPH.BS6 \
@@ -49,6 +49,8 @@ $(B)/sh2_fixed.o: mars/sh2_fixed.s | $(B)
 	$(AS) --big $< -o $@
 $(B)/marshw.o: mars/marshw.c | $(B)
 	$(CC) $(CFLAGS) -O1 $< -o $@
+$(B)/r_asm.o: src/r_asm.s | $(B)
+	$(AS) --big $< -o $@
 $(B)/font.o: src/font.c | $(B)
 	$(CC) $(CFLAGS) $< -o $@
 $(B)/%.o: port/%.c | $(B)
@@ -97,3 +99,5 @@ $(B)/$(NAME).32x: $(B)/game.elf $(B)/romfs.bin $(B)/romheaderfix tools/mkrom.py
 
 clean:
 	rm -rf $(B)
+
+-include $(OBJS:.o=.d)

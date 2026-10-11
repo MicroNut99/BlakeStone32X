@@ -7666,6 +7666,14 @@ void DemoLoop()
     bool breakit;
     uint16_t old_bufferofs;
 
+#ifdef BS32X_AUTOSTART
+    // BlakeStone32X speed-test build: straight into floor 1
+    NewGame(1, 0);
+    gamestate.flags |= GS_QUICKRUN;
+    startgame = true;
+    GameLoop();
+#endif
+
     while (true) {
         playstate = ex_title;
         if (!screenfaded) {
@@ -7704,10 +7712,14 @@ void DemoLoop()
                 }
 
                 ::CA_CacheGrChunk(TITLEPALETTE);
+#ifndef BS32X
+                // BlakeStone32X: all pages share one buffer, so this would
+                // erase the title; the palette is black at this point anyway.
                 old_bufferofs = static_cast<uint16_t>(::bufferofs);
                 ::bufferofs = displayofs;
                 VW_Bar(0, 0, ::vga_ref_width, ::vga_ref_height, 0);
                 ::bufferofs = old_bufferofs;
+#endif
 
                 ::VL_SetPalette(
                     0,

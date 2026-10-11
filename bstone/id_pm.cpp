@@ -46,7 +46,7 @@ uint32_t* chunks_offsets = nullptr;
 
 
 #ifdef BS32X
-// BlakeStone32X: the page file stays in cart ROM; only the offset table is copied to RAM
+// BlakeStone32X: the page file and its offset table stay in cart ROM
 static void open_page_file(
     const std::string& file_name)
 {
@@ -65,9 +65,6 @@ static void open_page_file(
     PMSpriteStart = bstone::Endian::le(reader.read_u16());
     PMSoundStart = bstone::Endian::le(reader.read_u16());
 
-    chunks_offsets = new uint32_t[ChunksInFile + 1];
-    std::memcpy(chunks_offsets, &raw_data[6], 4 * (ChunksInFile + 1));
-    bstone::Endian::lei(chunks_offsets, ChunksInFile + 1);
 }
 #else
 static void open_page_file(
@@ -122,9 +119,6 @@ void PM_Shutdown()
 
 #ifdef BS32X
     raw_data = nullptr;
-
-    delete [] chunks_offsets;
-    chunks_offsets = nullptr;
 #else
     delete [] raw_data;
     raw_data = nullptr;
@@ -140,7 +134,11 @@ void* PM_GetPage(
         ::Quit("Invalid page request.");
     }
 
+#ifdef BS32X
+    uint32_t offset = bs32x_le32(&raw_data[6 + 4 * page_number]);
+#else
     uint32_t offset = chunks_offsets[page_number];
+#endif
 
     if (offset == 0) {
         ::Quit("Tried to load a sparse page.");

@@ -2741,6 +2741,9 @@ void CacheBMAmsg(
     string = (char*)grsegs[MsgNum];
 
     pos = strstr(string, "^XX");
+#ifdef BS32X
+    if (!bs32x_is_rom(pos))     // texts in cart ROM have this 0 already
+#endif
     *(pos + 3) = 0;
 
     BMAmsg(string);

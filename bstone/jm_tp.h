@@ -53,7 +53,11 @@ Free Software Foundation, Inc.,
 
 #define is_shadowed ((flags & fl_shadowtext) == fl_shadowtext)
 #define ch_width(ch) (font->width[static_cast<int>(ch)]) // +((flags & fl_shadowtext) == fl_shadowtext))
+#ifdef BS32X
+#define font_height (static_cast<int16_t>(bs32x_le16(&font->height)))
+#else
 #define font_height (font->height) // +((flags & fl_shadowtext) == fl_shadowtext))
+#endif
 #define TP_INIT_DISPLAY_STR(num, str_ptr) { if ((num) < PI_MAX_NUM_DISP_STRS) { \
                                                 piStringTable[(num)] = (str_ptr); } \
                                             else { \

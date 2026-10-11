@@ -15,8 +15,32 @@ void bs32x_dump_latches(void);                       /* PC build: save the latch
 void bs32x_vid_set_palette(const unsigned char *pal); /* 768 bytes, 6-bit VGA values */
 void bs32x_vid_present(int displayofs);              /* show page at displayofs */
 void bs32x_vid_wait_vbl(int vbls);                   /* 70 Hz VGA vblanks */
+/* 32-bit signed divide: the SH2's divide unit on the 32X */
+static inline int bs32x_div(int a, int b)
+{
+#ifdef BS32X_MARS
+    volatile int* const divu = reinterpret_cast<volatile int*>(0xFFFFFF00);
+    divu[0] = b;            /* DVSR */
+    divu[1] = a;            /* DVDNT: starts the divide */
+    return divu[1];         /* waits for the quotient */
+#else
+    return a / b;
+#endif
+}
+unsigned char* vl_page_ptr(int x, int y);            /* vl_port: pixel of the draw page */
 void bs32x_in_update(void);                          /* platform: read pad, call bs32x_in_key */
 void bs32x_in_key(int scan_code, bool is_pressed, char ascii);
+/* pad meaning: 0 menus/screens, 1 playing, 2 yes/no question; returns the old mode */
+enum { BS32X_IN_UI = 0, BS32X_IN_PLAY = 1, BS32X_IN_CONFIRM = 2 };
+int bs32x_set_input_mode(int mode);
+extern volatile bool bs32x_next_weapon;                /* Y pressed while playing */
+#ifdef __cplusplus
+struct Bs32xInputMode {                               /* sets a pad meaning for one scope */
+    int old;
+    explicit Bs32xInputMode(int mode) : old(bs32x_set_input_mode(mode)) {}
+    ~Bs32xInputMode() { bs32x_set_input_mode(old); }
+};
+#endif
 /* files: read-only game data and saved files */
 bool bs32x_file_open_read(const char *name, const void **data, long *size);
 void bs32x_file_save(const char *name, const void *data, long size);

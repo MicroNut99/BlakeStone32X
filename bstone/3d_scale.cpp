@@ -23,6 +23,9 @@ Free Software Foundation, Inc.,
 
 
 #include "3d_def.h"
+#ifdef BS32X
+#include "bs32x_render.h"
+#endif
 
 
 enum ShapeDrawMode {
@@ -168,6 +171,12 @@ void generic_scale_shape(
     int8_t lighting,
     ShapeDrawMode draw_mode)
 {
+#ifdef BS32X
+    // BlakeStone32X: during DrawScaleds the shapes are listed and drawn by both CPUs
+    if (bs32x_sprite_record(xcenter, shapenum, height, lighting, draw_mode == e_sdm_shaded)) {
+        return;
+    }
+#endif
     if ((height / 2) > (maxscaleshl2 * vga_scale) || ((height / 2) == 0)) {
         return;
     }

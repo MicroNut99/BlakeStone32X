@@ -1121,7 +1121,12 @@ std::string ca_load_script(
 
     int length = 0;
 
+#ifdef BS32X
+    // (texts in cart ROM end with a 0 after their last "^XX")
+    for (int i = 0; script[i] != '\x1A' && script[i] != '\0'; ++i) {
+#else
     for (int i = 0; script[i] != '\x1A'; ++i) {
+#endif
         if (script[i] == '^' && script[i + 1] == 'X' && script[i + 2] == 'X') {
             length = i + 3;
         }

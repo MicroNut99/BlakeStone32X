@@ -374,6 +374,27 @@ void CheckWeaponChange()
 {
     const int n = ::is_ps() ? wp_bfg_cannon : wp_grenade;
 
+#ifdef BS32X
+    // BlakeStone32X: Y on the pad picks the next weapon the player has
+    if (bs32x_next_weapon) {
+        bs32x_next_weapon = false;
+        int w = gamestate.weapon;
+        for (int k = 0; k <= n - wp_autocharge; ++k) {
+            w = (w >= n) ? wp_autocharge : w + 1;
+            if ((gamestate.useable_weapons & (1 << w)) != 0) {
+                break;
+            }
+        }
+        if (w != gamestate.weapon) {
+            gamestate.weapon = static_cast<int8_t>(w);
+            gamestate.chosenweapon = static_cast<int8_t>(w);
+            DISPLAY_TIMED_MSG(WeaponAvailMsg, MP_WEAPON_AVAIL, MT_GENERAL);
+            DrawWeapon();
+        }
+        return;
+    }
+#endif
+
     for (int i = wp_autocharge; i <= n; i++) {
         if (buttonstate[bt_ready_autocharge + i - wp_autocharge]) {
             if (gamestate.useable_weapons & (1 << i)) {
@@ -1840,8 +1861,13 @@ char* HandleControlCodes(
     first_ch++;
 
 #ifndef TP_CASE_SENSITIVE
+#ifdef BS32X
+    if (!bs32x_is_rom(first_ch))   // texts in cart ROM: capitals already
+#endif
+    {
     *first_ch = toupper(*first_ch);
     *(first_ch + 1) = toupper(*(first_ch + 1));
+    }
 #endif
 
     uint16_t code = bs32x_le16(first_ch);
@@ -3095,6 +3121,9 @@ const int TOV_Y = 132;
 
 int16_t InputFloor()
 {
+#ifdef BS32X
+    Bs32xInputMode input_mode(BS32X_IN_UI);
+#endif
     if (::is_aog()) {
         const std::string messages[4] = {
             // "Current floor:\nSelect a floor."
@@ -3196,6 +3225,33 @@ int16_t InputFloor()
                     break;
                 }
             }
+
+#ifdef BS32X
+            // BlakeStone32X pad: the d-pad lights a floor button (left/right
+            // one floor, up/down two), A picks it
+            {
+                static int sel = 0;
+                if (sel < 1 || sel > 10 || draw_stats) {
+                    sel = (::gamestate.mapon >= 1 && ::gamestate.mapon <= 10) ? ::gamestate.mapon : 1;
+                }
+                int step = 0;
+                if (::Keyboard[ScanCode::sc_left_arrow]) { step = -1; ::Keyboard[ScanCode::sc_left_arrow] = false; }
+                if (::Keyboard[ScanCode::sc_right_arrow]) { step = 1; ::Keyboard[ScanCode::sc_right_arrow] = false; }
+                if (::Keyboard[ScanCode::sc_up_arrow]) { step = 2; ::Keyboard[ScanCode::sc_up_arrow] = false; }
+                if (::Keyboard[ScanCode::sc_down_arrow]) { step = -2; ::Keyboard[ScanCode::sc_down_arrow] = false; }
+                if (step != 0 && sel + step >= 1 && sel + step <= 10) {
+                    auto bx = [](int idx) { return 264 + 24 * (idx % 2); };
+                    auto by = [](int idx) { return TOP_STRIP_HEIGHT + 98 - 20 * (idx / 2); };
+                    ::VWB_DrawPic(bx(sel - 1), by(sel - 1), TELEPORT1OFFPIC + sel - 1);
+                    sel += step;
+                    ::VWB_DrawPic(bx(sel - 1), by(sel - 1), TELEPORT1ONPIC + sel - 1);
+                }
+                if (::Keyboard[ScanCode::sc_return]) {
+                    ::Keyboard[ScanCode::sc_return] = false;
+                    target_level = sel;
+                }
+            }
+#endif
 
             if (target_level > 0 && target_level != ::gamestate.mapon) {
                 ::sd_play_player_sound(ELEV_BUTTONSND, bstone::AC_ITEM);

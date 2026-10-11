@@ -1208,14 +1208,31 @@ void TP_WrapText()
 
 // print current line
 //
+    {
+#ifdef BS32X
+    // BlakeStone32X: the text may be in cart ROM, so the line is copied
+    // instead of being ended in place with a 0
+    char line_buf[256];
+    {
+        int n = static_cast<int>(scan_ch - first_ch);
+        if (n > 255) {
+            n = 255;
+        }
+        memcpy(line_buf, first_ch, n);
+        line_buf[n] = '\0';
+    }
+    const char* line = line_buf;
+#else
     temp = *scan_ch;
 
     const_cast<char*>(scan_ch)[0] = '\0';
+    const char* line = first_ch;
+#endif
 
     if ((justify_mode == jm_right) && (!(flags & fl_center))) {
         int width, height;
 
-        VWL_MeasureString(first_ch, &width, &height, font);
+        VWL_MeasureString(line, &width, &height, font);
         cur_x = static_cast<int16_t>(xh - width + 1);
         if (cur_x < xl) {
             cur_x = xl;
@@ -1229,13 +1246,16 @@ void TP_WrapText()
 
     if (*first_ch != TP_RETURN_CHAR) {
         if (pi->print_delay) {
-            TP_SlowPrint(first_ch, pi->print_delay);
+            TP_SlowPrint(line, pi->print_delay);
         } else {
-            TP_Print(first_ch, false);
+            TP_Print(line, false);
         }
     }
 
+#ifndef BS32X
     const_cast<char*>(scan_ch)[0] = temp;
+#endif
+    }
 
     first_ch = scan_ch;
 
@@ -1328,8 +1348,13 @@ void TP_HandleCodes()
 
         first_ch++;
 #ifndef TP_CASE_SENSITIVE
+#ifdef BS32X
+        if (!bs32x_is_rom(first_ch))   // texts in cart ROM: capitals already
+#endif
+        {
         *first_ch = toupper(*first_ch);
         *(first_ch + 1) = toupper(*(first_ch + 1));
+        }
 #endif
         uint16_t subcode;
         uint16_t code = bs32x_le16(first_ch);
@@ -2206,8 +2231,14 @@ void TP_CachePage(
         switch (*script++) {
         case TP_CONTROL_CHAR:
 #ifndef TP_CASE_SENSITIVE
+#ifdef BS32X
+            // texts in cart ROM have their codes in capitals already
+            if (!bs32x_is_rom(script))
+#endif
+            {
             *script = toupper(*script);
             *(script + 1) = toupper(*(script + 1));
+            }
 #endif
             code = bs32x_le16(script);
             script += 2;
@@ -2445,6 +2476,10 @@ int32_t TP_LoadScript(
     }
 
     pi->script[0] = (char*)pi->scriptstart;
+#ifdef BS32X
+    // texts in cart ROM already have this 0 (made with GREXP.BS6)
+    if (!bs32x_is_rom(pi->script[0]))
+#endif
     const_cast<char*>(pi->script[0])[size + 4] = '\0'; // Last byte is trashed!
 
     pi->flags |= TPF_CACHED_SCRIPT;
@@ -2485,8 +2520,14 @@ void TP_InitScript(
         switch (*script++) {
         case TP_CONTROL_CHAR:
 #ifndef TP_CASE_SENSITIVE
+#ifdef BS32X
+            // texts in cart ROM have their codes in capitals already
+            if (!bs32x_is_rom(script))
+#endif
+            {
             *script = toupper(*script);
             *(script + 1) = toupper(*(script + 1));
+            }
 #endif
             code = bs32x_le16(script);
             script += 2;

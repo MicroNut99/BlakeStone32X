@@ -1301,6 +1301,9 @@ void HelpPresenter(
 void US_ControlPanel(
     ScanCode scancode)
 {
+#ifdef BS32X
+    Bs32xInputMode input_mode(BS32X_IN_UI);
+#endif
     // BBi
     menu_background_color = (::is_aog_sw() ? 0x04 : TERM_BACK_COLOR);
 
@@ -4163,6 +4166,9 @@ int16_t Confirm(
     const char* string)
 {
     int16_t xit = 0, x, y, tick = 0, whichsnd[2] = { ESCPRESSEDSND, SHOOTSND };
+#ifdef BS32X
+    Bs32xInputMode input_mode(BS32X_IN_CONFIRM);
+#endif
 
 
     Message(string);
@@ -4309,9 +4315,18 @@ void CacheMessage(
     CA_CacheGrChunk(MessageNum);
     string = (char*)grsegs[MessageNum];
 
+#ifdef BS32X
+    // the text may be in cart ROM: end a copy at the "^XX"
+    {
+        const char* end = strstr(string, "^XX");
+        std::string copy(string, end ? static_cast<size_t>(end - string) : strlen(string));
+        Message(copy.c_str());
+    }
+#else
     TerminateStr(string);
 
     Message(string);
+#endif
 
     FREEFONT(MessageNum);
 }

@@ -14,7 +14,9 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <sys/mman.h>
 #include "id_heads.h"
+#include "bs32x_render.h"
 
 namespace {
 
@@ -50,7 +52,14 @@ std::vector<UntilTap> untils;
 std::vector<ScriptEvent> script;
 size_t script_pos = 0;
 
-std::map<std::string, std::vector<uint8_t>> files;
+struct RoFile {
+    const uint8_t* p;
+    size_t n;
+    const uint8_t* data() const { return p; }
+    size_t size() const { return n; }
+    bool empty() const { return n == 0; }
+};
+std::map<std::string, RoFile> files;
 
 std::string upper(const char* s)
 {
@@ -160,6 +169,9 @@ void init()
     initialized = true;
     for (auto& m : music_start_frame) {
         m = -1;
+    }
+    if (std::getenv("BS32X_ORIG")) {
+        ::bs32x_fast_render = false;     /* the game's own 3D drawing */
     }
     if (const char* s = std::getenv("BS32X_FRAMES")) {
         max_frames = std::atoi(s);
@@ -308,6 +320,36 @@ void bs32x_in_update(void)
     }
 }
 
+volatile bool bs32x_next_weapon = false;
+
+/* one CPU: the fast renderer draws both halves itself */
+bool bs32x_second_cpu_start(void)
+{
+    return false;
+}
+
+void bs32x_second_cpu_wait(void)
+{
+}
+
+bool bs32x_present_async = false;
+
+void bs32x_sync_first(int, int)
+{
+}
+
+void bs32x_sync_second(int, int)
+{
+}
+
+int bs32x_set_input_mode(int mode)
+{
+    static int cur = 0;
+    int old = cur;
+    cur = mode;
+    return old;
+}
+
 bool bs32x_file_open_read(const char* name, const void** data, long* size)
 {
     extern bool mem_ignore;
@@ -329,7 +371,12 @@ bool bs32x_file_open_read(const char* name, const void** data, long* size)
             buf.insert(buf.end(), tmp, tmp + n);
         }
         std::fclose(f);
-        it = files.emplace(key, std::move(buf)).first;
+        /* read-only copy, like cart ROM: a write by the game crashes here */
+        size_t len = (buf.size() + 8 + 4095) & ~size_t(4095);
+        void* m = mmap(nullptr, len, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        std::memcpy(m, buf.data(), buf.size());
+        mprotect(m, len, PROT_READ);
+        it = files.emplace(key, RoFile{static_cast<const uint8_t*>(m), buf.size()}).first;
     }
     mem_ignore = false;
     *data = it->second.data();
@@ -351,9 +398,10 @@ bool bs32x_is_rom(const void* p)
 
 void bs32x_file_save(const char* name, const void* data, long size)
 {
-    std::string key = upper(name);
-    auto p = static_cast<const uint8_t*>(data);
-    files[key].assign(p, p + size);
+    /* like the cart: nothing is kept */
+    static_cast<void>(name);
+    static_cast<void>(data);
+    static_cast<void>(size);
 }
 
 void bs32x_log(const char* message)
@@ -432,6 +480,15 @@ static void* track_alloc(size_t n, void* site)
     p[1] = (mem_ignore || in_track) ? 0 : 1;
     if (p[1] && n >= 4096 && std::getenv("BS32X_MEMLOG")) {
         std::fprintf(stderr, "NEW %zu from %p live-before %zu\n", n, site, mem_now);
+    }
+    if (p[1] && live && !in_track && std::getenv("BS32X_MEMDUMP_AT") &&
+        n == static_cast<size_t>(std::atoi(std::getenv("BS32X_MEMDUMP_AT")))) {
+        std::fprintf(stderr, "MEMDUMP before %zu: live %zu\n", n, mem_now);
+        for (auto& kv : *live) {
+            if (kv.second.size >= 256) {
+                std::fprintf(stderr, "  %zu from %p\n", kv.second.size, kv.second.site);
+            }
+        }
     }
     if (p[1]) {
         mem_now += n;
@@ -552,8 +609,11 @@ void bs32x_dump_grsizes(void)
 
 
 // ---- PC build tool: pre-expanded graphics chunks for the cart (GREXP.BS6) ----
-// fonts, pictures and tiles (STARTFONT .. STARTEXTERNS-1), except full screens.
+// fonts, pictures, tiles and the extern chunks (texts, palettes, demos), except
+// chunks of 60000 bytes or more (full screens).
 // Format (little-endian): "GRX1", u32 count, u32 offset[count] (0 = not stored), data.
+int32_t GRFILEPOS(int16_t c);
+
 void bs32x_dump_grexp(void)
 {
     const char* path = std::getenv("BS32X_DUMP_GREXP");
@@ -569,8 +629,8 @@ void bs32x_dump_grexp(void)
     out[0] = 'G'; out[1] = 'R'; out[2] = 'X'; out[3] = '1';
     put32(4, static_cast<uint32_t>(NUMCHUNKS));
     int stored = 0;
-    for (int c = STARTFONT; c < STARTEXTERNS; ++c) {
-        if (grsegs[c]) {
+    for (int c = STARTFONT; c < NUMCHUNKS; ++c) {
+        if (grsegs[c] || GRFILEPOS(c) < 0) {
             continue;
         }
         ca_gr_last_expanded_size = 0;
@@ -585,7 +645,27 @@ void bs32x_dump_grexp(void)
             }
             put32(8 + 4 * c, static_cast<uint32_t>(out.size()));
             auto p = static_cast<const uint8_t*>(grsegs[c]);
+            size_t at = out.size();
             out.insert(out.end(), p, p + size);
+            out.insert(out.end(), 4, 0);
+            if (c >= STARTEXTERNS) {
+                // texts are used from ROM: do now what the text presenter
+                // does to them in memory (control codes in capitals, a 0
+                // after the "^XX" end mark)
+                for (size_t i = at; i + 2 < at + size; ++i) {
+                    if (out[i] == '^') {
+                        out[i + 1] = static_cast<uint8_t>(std::toupper(out[i + 1]));
+                        out[i + 2] = static_cast<uint8_t>(std::toupper(out[i + 2]));
+                    }
+                }
+                // (after the last one: a chunk may hold several messages)
+                for (size_t i = at + size; i-- > at + 2; ) {
+                    if (out[i - 2] == '^' && out[i - 1] == 'X' && out[i] == 'X') {
+                        out[i + 1] = 0;
+                        break;
+                    }
+                }
+            }
             ++stored;
         }
         UNCACHEGRCHUNK(c);
