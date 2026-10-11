@@ -1,0 +1,6 @@
+BStone v1.0.0 (https://github.com/bibendovsky/bstone, tag v1.0.0, 2015-05-17),
+a source port of Blake Stone: Aliens of Gold and Planet Strike.
+GPL-2.0-or-later, see LICENSE. Copyright (c) 1992-2013 Apogee Entertainment,
+(c) 2013-2015 Boris I. Bendovsky.
+First commit = files as released (OpenGL files and dosbox OPL left out).
+Later commits = changes for the 32X port.
