@@ -31,6 +31,7 @@ static volatile uint16_t mars_activescreen = 0;
 static char mars_gamepadport[MARS_MAX_CONTROLLERS];
 static char mars_mouseport;
 static volatile uint16_t mars_controlval[2];
+static volatile uint16_t mars_controlcur[2];   /* BlakeStone32X: buttons held now */
 
 volatile unsigned mars_vblank_count = 0;
 volatile unsigned mars_pwdt_ovf_count = 0;
@@ -750,6 +751,7 @@ void Mars_DetectInputDevices(void)
 		{
 			mars_gamepadport[i] = i;
 			mars_controlval[i] |= val;
+			mars_controlcur[i] = val;
 		}
 
 		MARS_SYS_COMM0 = ++ctrl_wait;
@@ -779,6 +781,23 @@ int Mars_ReadController(int ctrl)
 	val = mars_controlval[port];
 	mars_controlval[port] = 0;
 	return val;
+}
+
+/* BlakeStone32X: the buttons held at the last report from the 68000 (not
+   cleared by reading, so a read just before the next report doesn't look
+   like all buttons let go) */
+int Mars_ReadControllerState(int ctrl)
+{
+	int port;
+
+	if (ctrl < 0 || ctrl >= MARS_MAX_CONTROLLERS)
+		return -1;
+
+	port = mars_gamepadport[ctrl];
+	if (port < 0)
+		return -1;
+
+	return mars_controlcur[port];
 }
 
 void Mars_CtlMDVDP(int sel)

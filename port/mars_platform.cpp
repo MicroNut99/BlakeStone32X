@@ -440,19 +440,10 @@ void bs32x_vid_wait_vbl(int vbls)
 
 void bs32x_in_update(void)
 {
-    /* the 68000 sends the pad once per vblank; read it once per vblank too
-       (reading clears the accumulated value) */
-    static unsigned last_vbl = ~0u;
-    static int pad_now = 0;
+    /* the buttons held at the 68000's last report (once per vblank) */
     bs32x_music_tick();
-
-    if (mars_vblank_count != last_vbl) {
-        last_vbl = mars_vblank_count;
-        int v = Mars_ReadController(0);
-        pad_now = v < 0 ? 0 : v;
-    }
-
-    int pad = pad_now;
+    int v = Mars_ReadControllerState(0);
+    int pad = v < 0 ? 0 : v;
     int changed = pad ^ pad_prev;
     if (changed) {
         const PadMap& m = pad_maps[in_mode];

@@ -747,6 +747,15 @@ void binds_initialize_menu()
     binds_names[ScanCode::sc_mouse_x1] = "MOUSE 4";
     binds_names[ScanCode::sc_mouse_x2] = "MOUSE 5";
 
+#ifdef BS32X
+    // BlakeStone32X: the keys the pad sends while playing, by button name
+    binds_names[ScanCode::sc_control] = "PAD A";
+    binds_names[ScanCode::sc_space] = "PAD B";
+    binds_names[ScanCode::sc_alt] = "PAD C";
+    binds_names[ScanCode::sc_left_shift] = "PAD X";
+    binds_names[ScanCode::sc_tab] = "PAD Z";
+#endif
+
     for (const auto& binds_name : binds_names) {
         int width = 0;
         int height = 0;
