@@ -111,15 +111,15 @@ const PadKey confirm_keys[] = {
     {SEGA_CTRL_MODE, ScanCode::sc_n, 'n'},
 };
 
-/* playing: A open/use, B fire, C strafe, X run, Y next weapon,
+/* playing: A fire, B open/use, C strafe, X run, Y next weapon,
    Z / MODE status, START menu */
 const PadKey play_keys[] = {
     {SEGA_CTRL_UP, ScanCode::sc_up_arrow, 0},
     {SEGA_CTRL_DOWN, ScanCode::sc_down_arrow, 0},
     {SEGA_CTRL_LEFT, ScanCode::sc_left_arrow, 0},
     {SEGA_CTRL_RIGHT, ScanCode::sc_right_arrow, 0},
-    {SEGA_CTRL_B, ScanCode::sc_control, 0},
-    {SEGA_CTRL_A, ScanCode::sc_space, ' '},
+    {SEGA_CTRL_A, ScanCode::sc_control, 0},
+    {SEGA_CTRL_B, ScanCode::sc_space, ' '},
     {SEGA_CTRL_C, ScanCode::sc_alt, 0},
     {SEGA_CTRL_X, ScanCode::sc_left_shift, 0},
     {SEGA_CTRL_Z, ScanCode::sc_tab, 9},
@@ -328,6 +328,92 @@ void bs32x_sync_second(int ready, int go)
 
 extern "C" {
 volatile uint32_t bs32x_present_count;   /* screens shown (for speed tests) */
+}
+
+/* ---------- frame buffer store and page scratch (bs32x_levels.cpp) ---------- */
+/* each frame buffer: line table + 224 lines of 320 pixels up to 0x11A00; the
+   store is 0x12000..0x1EFFF (52 KB), the last 4 KB keep the page bytes that are not
+   on screen while the page is used as work space */
+#include "bs32x_levels.h"
+
+namespace {
+
+const uint32_t fb_store = 0x24000000 + 0x12000;
+const int fb_store_size = 0xD000;
+const uint32_t fb_extra = 0x24000000 + 0x1F000;
+int scratch_start = 0;
+
+int back_bank()
+{
+    return (MARS_VDP_FBCTL & MARS_VDP_FS) ^ 1;    /* (after a flip has happened) */
+}
+
+void select_bank(int bank)
+{
+    Mars_WaitFrameBuffersFlip();
+    if (back_bank() != bank) {
+        Mars_FlipFrameBuffers(1);
+    }
+}
+
+void copy_words(uint32_t* d, const uint32_t* s, int bytes)
+{
+    for (int n = bytes >> 2; n > 0; --n) {
+        *d++ = *s++;
+    }
+}
+
+/* the page into the current back buffer: the 200 shown rows and the rest */
+void page_to_fb(void)
+{
+    const uint8_t* page = vga_page;
+    copy_words(reinterpret_cast<uint32_t*>(0x24000200 + 12 * 320),
+        reinterpret_cast<const uint32_t*>(page + scratch_start), 320 * 200);
+    uint32_t* extra = reinterpret_cast<uint32_t*>(fb_extra);
+    copy_words(extra, reinterpret_cast<const uint32_t*>(page), scratch_start);
+    copy_words(extra + scratch_start / 4, reinterpret_cast<const uint32_t*>(page + scratch_start + 64000),
+        320 * 208 - 64000 - scratch_start);
+}
+
+} // namespace
+
+uint8_t* bs32x_scratch_begin(void)
+{
+    bs32x_second_cpu_wait();
+    scratch_start = (4 * displayofs) % (320 * 208);
+    if (scratch_start > 320 * 208 - 64000) {
+        scratch_start = 0;
+    }
+    /* the page into both frame buffers, so flips show the same picture */
+    Mars_WaitFrameBuffersFlip();
+    page_to_fb();
+    Mars_FlipFrameBuffers(1);
+    page_to_fb();
+    return vga_page;
+}
+
+void bs32x_scratch_end(void)
+{
+    Mars_WaitFrameBuffersFlip();
+    uint8_t* page = vga_page;
+    copy_words(reinterpret_cast<uint32_t*>(page + scratch_start),
+        reinterpret_cast<const uint32_t*>(0x24000200 + 12 * 320), 320 * 200);
+    const uint32_t* extra = reinterpret_cast<const uint32_t*>(fb_extra);
+    copy_words(reinterpret_cast<uint32_t*>(page), extra, scratch_start);
+    copy_words(reinterpret_cast<uint32_t*>(page + scratch_start + 64000), extra + scratch_start / 4,
+        320 * 208 - 64000 - scratch_start);
+}
+
+uint8_t* bs32x_bank_access(int bank, int* size)
+{
+    select_bank(bank);
+    *size = fb_store_size;
+    return reinterpret_cast<uint8_t*>(fb_store);
+}
+
+void bs32x_bank_size(int, int* size)
+{
+    *size = fb_store_size;
 }
 
 /* show the page (rows 0..199 -> lines 12..211); during play the second CPU

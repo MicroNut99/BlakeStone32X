@@ -23,6 +23,9 @@ Free Software Foundation, Inc.,
 
 
 #include "3d_def.h"
+#ifdef BS32X
+#include "bs32x_levels.h"
+#endif
 #include "jm_lzh.h"
 #include "bstone_binary_reader.h"
 #include "bstone_binary_writer.h"
@@ -6470,6 +6473,9 @@ void NewGame(
     // BBi
     g_playtemp.set_size(0);
     g_playtemp.set_position(0);
+#ifdef BS32X
+    bs32x_levels_clear();
+#endif
     // BBi
 }
 
@@ -6578,11 +6584,16 @@ bool LoadLevel(
     shade_max = sm_table[mod];
     normalshade = (3 * (maxscale >> 2)) / normalshade_div;
 
+#ifdef BS32X
+    // BlakeStone32X: the floor states are packed in the frame buffer store
+    if (!bs32x_level_has(level_index) || ForceLoadDefault) {
+#else
     std::string chunk_name = "LV" + ::bs32x_hex2(level_index);
 
     g_playtemp.set_position(0);
 
     if ((::FindChunk(&g_playtemp, chunk_name) == 0) || ForceLoadDefault) {
+#endif
         ::SetupGameLevel();
 
         gamestate.flags |= GS_VIRGIN_LEVEL;
@@ -6605,7 +6616,19 @@ bool LoadLevel(
     ::SetupGameLevel();
     loadedgame = oldloaded;
 
+#ifdef BS32X
+    // unpacked into the page RAM (the screen is kept meanwhile)
+    uint8_t* scratch = bs32x_scratch_begin();
+    int level_size = bs32x_level_get(level_index, scratch, bs32x_level_max);
+    if (level_size < 0) {
+        level_size = 0;
+        is_succeed = false;
+    }
+    bstone::MemoryStream level_stream(level_size, 0, scratch);
+    bstone::BinaryReader reader(&level_stream);
+#else
     bstone::BinaryReader reader(&g_playtemp);
+#endif
 
     { bs32x_archive_error = false;
         ::deserialize_field(tilemap, reader, checksum);
@@ -6615,6 +6638,15 @@ bool LoadLevel(
                 int32_t value = 0;
                 ::deserialize_field(value, reader, checksum);
 
+#ifdef BS32X
+                // stored as the difference from tilemap (mostly 0: packs
+                // well), actors as their number - 0x10000
+                if (value <= -0x10000) {
+                    value += 0x10000;
+                } else {
+                    value += tilemap[i][j];
+                }
+#endif
                 if (value < 0) {
                     actorat[i][j] = &objlist[-value];
                 } else {
@@ -6735,6 +6767,10 @@ bool LoadLevel(
         is_succeed = (saved_checksum == checksum.get_value());
     }
 
+#ifdef BS32X
+    bs32x_scratch_end();
+#endif
+
     if (!is_succeed) {
         int16_t old_wx = WindowX;
         int16_t old_wy = WindowY;
@@ -6799,6 +6835,14 @@ bool SaveLevel(
     //
     gamestate.flags &= ~GS_VIRGIN_LEVEL;
 
+#ifdef BS32X
+    // BlakeStone32X: written into the page RAM, then packed into the frame
+    // buffer store (bs32x_levels.cpp)
+    uint8_t* scratch = bs32x_scratch_begin();
+    bstone::MemoryStream level_stream(bs32x_level_max, 0, scratch, bstone::StreamOpenMode::read_write);
+    bstone::Crc32 checksum;
+    bstone::BinaryWriter writer(&level_stream);
+#else
     // Remove level chunk from file
     //
     std::string chunk_name = "LV" + ::bs32x_hex2(level_index);
@@ -6818,6 +6862,7 @@ bool SaveLevel(
     int64_t beg_offset = g_playtemp.get_position();
 
     bstone::BinaryWriter writer(&g_playtemp);
+#endif
 
     ::serialize_field(tilemap, writer, checksum);
 
@@ -6836,6 +6881,14 @@ bool SaveLevel(
                 s_value = static_cast<int32_t>(
                     reinterpret_cast<size_t>(actorat[i][j]));
             }
+
+#ifdef BS32X
+            if (actorat[i][j] >= objlist) {
+                s_value -= 0x10000;
+            } else {
+                s_value -= tilemap[i][j];
+            }
+#endif
 
             ::serialize_field(s_value, writer, checksum);
         }
@@ -6915,6 +6968,12 @@ bool SaveLevel(
     //
     writer.write(bstone::Endian::le(checksum.get_value()));
 
+#ifdef BS32X
+    int level_size = static_cast<int>(level_stream.get_position());
+    static_cast<void>(bs32x_level_put(level_index, scratch, level_size,
+        scratch + bs32x_level_max, bs32x_scratch_size - bs32x_level_max));
+    bs32x_scratch_end();
+#else
     int64_t end_offset = g_playtemp.get_position();
     int32_t chunk_size = static_cast<int32_t>(end_offset - beg_offset);
 
@@ -6923,6 +6982,7 @@ bool SaveLevel(
     g_playtemp.seek(-(chunk_size + 4), bstone::StreamSeekOrigin::current);
     writer.write(bstone::Endian::le(chunk_size));
     g_playtemp.set_size(end_offset);
+#endif
 
     ::NewViewSize();
 
@@ -7359,7 +7419,11 @@ bool SaveTheGame(
 bool LevelInPlaytemp(
     int level_index)
 {
+#ifdef BS32X
+    return bs32x_level_has(level_index);
+#else
     return ::FindChunk(&g_playtemp, "LV" + ::bs32x_hex2(level_index)) != 0;
+#endif
 }
 
 bool CheckDiskSpace(
@@ -7668,8 +7732,14 @@ void DemoLoop()
 
 #ifdef BS32X_AUTOSTART
     // BlakeStone32X speed-test build: straight into floor 1
-    NewGame(1, 0);
+#ifndef BS32X_AUTOSTART_EPISODE
+#define BS32X_AUTOSTART_EPISODE 0
+#endif
+    NewGame(1, BS32X_AUTOSTART_EPISODE);
     gamestate.flags |= GS_QUICKRUN;
+#ifdef BS32X_LEVELTEST
+    godmode = true;
+#endif
     startgame = true;
     GameLoop();
 #endif

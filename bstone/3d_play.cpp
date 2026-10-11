@@ -1745,6 +1745,27 @@ void PlayLoop()
     do {
         PollControls();
 
+#ifdef BS32X_LEVELTEST
+        // BlakeStone32X memory test build: every 5 seconds up one floor to
+        // the top, then back down (to the floors kept in the store)
+        {
+            static bool going_down = false;
+            if (TimeCount > 350 && playstate == ex_stillplaying) {
+                if (gamestate.mapon >= 10) {
+                    going_down = true;
+                }
+                if (!going_down) {
+                    gamestate.lastmapon = gamestate.mapon;
+                    playstate = ex_warped;
+                } else if (gamestate.mapon > 0) {
+                    gamestate.lastmapon = gamestate.mapon;
+                    gamestate.mapon -= 2;       /* (ex_warped adds one) */
+                    playstate = ex_warped;
+                }
+            }
+        }
+#endif
+
 //
 // actor thinking
 //

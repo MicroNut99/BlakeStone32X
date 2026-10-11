@@ -1044,6 +1044,12 @@ void binds_draw_menu()
         in_handle_events();
 
         if (binds_is_assigning) {
+#ifdef BS32X
+            // BlakeStone32X: while waiting for the new key the pad sends its
+            // playing keys (A, B, C, X, Z...), so a pad button can be given
+            // to the action; START cancels
+            Bs32xInputMode input_mode(BS32X_IN_PLAY);
+#endif
             LastScan = ScanCode::sc_none;
             bool quit = false;
 

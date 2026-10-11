@@ -334,6 +334,33 @@ void bs32x_second_cpu_wait(void)
 
 bool bs32x_present_async = false;
 
+/* frame buffer store stand-ins (bs32x_levels.cpp) */
+static uint8_t host_banks[2][0xD000] __attribute__((aligned(4)));
+static uint8_t host_page_copy[320 * 208];
+
+uint8_t* bs32x_scratch_begin(void)
+{
+    std::memcpy(host_page_copy, vga.data(), sizeof(host_page_copy));
+    std::memset(vga.data(), 0xCD, sizeof(host_page_copy));   /* (shows misuse) */
+    return vga.data();
+}
+
+void bs32x_scratch_end(void)
+{
+    std::memcpy(vga.data(), host_page_copy, sizeof(host_page_copy));
+}
+
+uint8_t* bs32x_bank_access(int bank, int* size)
+{
+    *size = 0xD000;
+    return host_banks[bank];
+}
+
+void bs32x_bank_size(int, int* size)
+{
+    *size = 0xD000;
+}
+
 void bs32x_sync_first(int, int)
 {
 }
