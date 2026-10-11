@@ -3,3 +3,4 @@ build/
 *.BS6
 *.bin
 !mars/src-md/m68k.bin
+__pycache__/
