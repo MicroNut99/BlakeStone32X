@@ -415,6 +415,12 @@ bool bs32x_snd_play_pcm(int index, int, const void*, int size, int, int)
     return true;
 }
 
+bool bs32x_snd_play_adlib(int index, int, int, int)
+{
+    std::fprintf(stderr, "SND adlib %d frame %d\n", index, frame_no);
+    return false;
+}
+
 bool bs32x_snd_is_playing(void)
 {
     return false;

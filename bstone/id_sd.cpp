@@ -105,13 +105,15 @@ public:
         { return bs32x_snd_is_channel_playing(static_cast<int>(channel)); }
     bool play_adlib_music(int index, const void* data, int size)
         { return bs32x_snd_play_music(index, data, size); }
-    bool play_adlib_sound(int, int, const void*, int, int, bstone::ActorType, bstone::ActorChannel)
-        { return false; }
+    bool play_adlib_sound(int index, int priority, const void*, int, int actor_index,
+        bstone::ActorType, bstone::ActorChannel channel)
+        { return bs32x_snd_play_adlib(index, priority, actor_index, static_cast<int>(channel)); }
     bool play_pcm_sound(int index, int priority, const void* data, int size,
         int actor_index, bstone::ActorType, bstone::ActorChannel channel)
         { return bs32x_snd_play_pcm(index, priority, data, size, actor_index, static_cast<int>(channel)); }
-    void set_music_volume(int volume) { bs32x_snd_set_volume(1, volume); }
-    void set_sfx_volume(int volume) { bs32x_snd_set_volume(0, volume); }
+    // (the game passes 0..1; the platform takes the game's 0..20 steps)
+    void set_music_volume(float volume) { bs32x_snd_set_volume(1, static_cast<int>(volume * sd_max_volume + 0.5f)); }
+    void set_sfx_volume(float volume) { bs32x_snd_set_volume(0, static_cast<int>(volume * sd_max_volume + 0.5f)); }
     void set_mute(bool value) { bs32x_snd_set_volume(2, value ? 1 : 0); }
     bool stop_all_sfx() { bs32x_snd_stop_all(); return true; }
     bool stop_music() { bs32x_snd_stop_music(); return true; }
@@ -364,12 +366,13 @@ void SD_StartMusic(
     ::sqPlayedOnce = false;
 
 #ifdef BS32X
-    // BlakeStone32X: music chunks may be left off the cart
-    if (::sd_is_music_enabled &&
-        (::audiostarts[STARTMUSIC + index + 1] - ::audiostarts[STARTMUSIC + index]) < 4)
-    {
-        static_cast<void>(bs32x_snd_play_music(index, nullptr, 0));   // (test build: event marker)
-        ::sqPlayedOnce = true;
+    // BlakeStone32X: the music is played by the Genesis FM chip (MUSIC.BS6);
+    // the platform sets sqPlayedOnce when the song has played once
+    if ((::audiostarts[STARTMUSIC + index + 1] - ::audiostarts[STARTMUSIC + index]) < 4) {
+        ::music_index = index;
+        if (!::sd_is_music_enabled || !bs32x_snd_play_music(index, nullptr, 0)) {
+            ::sqPlayedOnce = true;
+        }
         return;
     }
 #endif

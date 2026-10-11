@@ -111,15 +111,15 @@ const PadKey confirm_keys[] = {
     {SEGA_CTRL_MODE, ScanCode::sc_n, 'n'},
 };
 
-/* playing: A fire, B open/use, C strafe, X run, Y next weapon,
+/* playing: A open/use, B fire, C strafe, X run, Y next weapon,
    Z / MODE status, START menu */
 const PadKey play_keys[] = {
     {SEGA_CTRL_UP, ScanCode::sc_up_arrow, 0},
     {SEGA_CTRL_DOWN, ScanCode::sc_down_arrow, 0},
     {SEGA_CTRL_LEFT, ScanCode::sc_left_arrow, 0},
     {SEGA_CTRL_RIGHT, ScanCode::sc_right_arrow, 0},
-    {SEGA_CTRL_A, ScanCode::sc_control, 0},
-    {SEGA_CTRL_B, ScanCode::sc_space, ' '},
+    {SEGA_CTRL_B, ScanCode::sc_control, 0},
+    {SEGA_CTRL_A, ScanCode::sc_space, ' '},
     {SEGA_CTRL_C, ScanCode::sc_alt, 0},
     {SEGA_CTRL_X, ScanCode::sc_left_shift, 0},
     {SEGA_CTRL_Z, ScanCode::sc_tab, 9},
@@ -151,8 +151,11 @@ uint8_t bs32x_pal8[768] __attribute__((aligned(4)));
 
 int bstone_main(int argc, char* argv[]);
 
+void bs32x_sound_init(void);
+
 extern "C" int bs32x_game_main(int argc, char* argv[])
 {
+    bs32x_sound_init();
     return bstone_main(argc, argv);
 }
 
@@ -215,9 +218,11 @@ void bs32x_vid_set_palette(const unsigned char* pal)
 }
 
 /* ---------- second SH2 ---------- */
-/* COMM4: 1 = draw your half of the 3D view, 2 = show the page, 0 = done */
+/* COMM4: 1 = draw your half of the 3D view, 2 = show the page,
+   7 = start the sound (PWM and DMA), 0 = done */
 
 #include "bs32x_render.h"
+#include "bs32x_sound.h"
 
 namespace {
 
@@ -255,11 +260,13 @@ extern "C" void bs32x_second_loop(void)
     volatile uint16_t* comm4 = reinterpret_cast<volatile uint16_t*>(&MARS_SYS_COMM4);
     for (;;) {
         int cmd;
-        while ((cmd = *comm4) != 1 && cmd != 2) {
+        while ((cmd = *comm4) != 1 && cmd != 2 && cmd != 7) {
         }
         CacheControl(SH2_CCTL_CP | SH2_CCTL_CE);   /* see the first CPU's latest data */
         if (cmd == 1) {
             bs32x_render_second();
+        } else if (cmd == 7) {
+            bs32x_sound_start();
         } else {
             copy_and_flip(present_src);
         }
@@ -277,6 +284,15 @@ void bs32x_second_cpu_wait(void)
     }
     second_busy = false;
     CacheControl(SH2_CCTL_CP | SH2_CCTL_CE);       /* see what the second CPU did */
+}
+
+/* start the sound effects on the second CPU (once, at start-up) */
+void bs32x_sound_init(void)
+{
+    bs32x_second_cpu_wait();
+    second_busy = true;
+    MARS_SYS_COMM4 = 7;
+    bs32x_second_cpu_wait();
 }
 
 bool bs32x_second_cpu_start(void)
@@ -424,49 +440,222 @@ void bs32x_log(const char* message)
     last_log[sizeof(last_log) - 1] = '\0';
 }
 
-bool bs32x_snd_play_pcm(int, int, const void*, int, int, int)
+/* ---------- sound effects (mixed on the second CPU, bs32x_sound.c) ---------- */
+
+extern uint16_t* DigiList;
+
+namespace {
+
+struct SndSlot {
+    int actor;          /* objlist index, -1 none */
+    int channel;
+    int priority;
+    uint32_t end;       /* TimeCount when it has finished */
+};
+
+SndSlot snd_slots[BS32X_SND_VOICES];
+int snd_volume = 64;
+
+const uint8_t* adlib_sfx = nullptr;
+bool adlib_tried = false;
+
+bool slot_busy(const SndSlot& s)
 {
-    return false;
+    return static_cast<int32_t>(s.end - TimeCount) > 0;
+}
+
+/* the voice for a new sound, or -1 */
+int pick_slot(int priority, int actor, int channel)
+{
+    if (actor >= 0) {
+        for (int i = 0; i < BS32X_SND_VOICES; ++i) {
+            if (snd_slots[i].actor == actor && snd_slots[i].channel == channel && slot_busy(snd_slots[i])) {
+                return i;   /* the same actor's voice: the new sound replaces it */
+            }
+        }
+    }
+    int best = -1;
+    for (int i = 0; i < BS32X_SND_VOICES; ++i) {
+        if (!slot_busy(snd_slots[i])) {
+            return i;
+        }
+        if (snd_slots[i].priority <= priority && (best < 0 || snd_slots[i].priority < snd_slots[best].priority)) {
+            best = i;
+        }
+    }
+    return best;
+}
+
+bool start_sound(const uint8_t* rec, int page, int pages, int samples, int priority, int actor, int channel)
+{
+    if (!rec || samples <= 0 || snd_volume == 0) {
+        return false;
+    }
+    int slot = pick_slot(priority, actor, channel);
+    if (slot < 0) {
+        return false;
+    }
+    SndSlot& s = snd_slots[slot];
+    s.actor = actor;
+    s.channel = channel;
+    s.priority = priority;
+    s.end = TimeCount + static_cast<uint32_t>(samples / 100 + 1);   /* 7000 Hz, 70 ticks/s */
+
+    Bs32xSndCmd c;
+    c.kind = BS32X_SND_START;
+    c.slot = slot;
+    c.data = rec;
+    c.page = page;
+    c.pages = pages;
+    c.vol = 64;
+    bs32x_sound_command(&c);
+    return true;
+}
+
+} // namespace
+
+extern "C" const uint8_t* bs32x_sound_page(int page)
+{
+    return static_cast<const uint8_t*>(PM_GetSoundPage(page));
+}
+
+bool bs32x_snd_play_pcm(int index, int priority, const void* data, int size, int actor_index, int channel)
+{
+    int page = DigiList[2 * index];
+    int pages = (size + PMPageSize - 1) / PMPageSize;
+    return start_sound(static_cast<const uint8_t*>(data), page, pages, size, priority, actor_index, channel);
+}
+
+/* AdLib-only sound effects, made into ADPCM on the PC (ADLIBSFX.BS6) */
+bool bs32x_snd_play_adlib(int sound_index, int priority, int actor_index, int channel)
+{
+    if (!adlib_tried) {
+        adlib_tried = true;
+        const void* d = nullptr;
+        long size = 0;
+        if (bs32x_file_open_read("ADLIBSFX.BS6", &d, &size)) {
+            adlib_sfx = static_cast<const uint8_t*>(d);
+        }
+    }
+    if (!adlib_sfx || sound_index < 0 || sound_index >= static_cast<int>(bs32x_le32(adlib_sfx + 4))) {
+        return false;
+    }
+    uint32_t at = bs32x_le32(adlib_sfx + 8 + 4 * sound_index);
+    if (at == 0) {
+        return false;
+    }
+    const uint8_t* rec = adlib_sfx + at;
+    int samples = rec[0] | (rec[1] << 8);
+    return start_sound(rec, -1, 1, samples, priority, actor_index, channel);
 }
 
 bool bs32x_snd_is_playing(void)
 {
+    for (const auto& s : snd_slots) {
+        if (slot_busy(s)) {
+            return true;
+        }
+    }
     return false;
 }
 
-bool bs32x_snd_is_channel_playing(int)
+bool bs32x_snd_is_channel_playing(int channel)
 {
+    for (const auto& s : snd_slots) {
+        if (s.actor == 0 && s.channel == channel && slot_busy(s)) {
+            return true;
+        }
+    }
     return false;
 }
 
+/* ---------- music: YM2612 VGM songs played by the Genesis side (MUSIC.BS6) ---------- */
+
+static const uint8_t* music_file = nullptr;
+static bool music_tried = false;
 static uint32_t music_start = 0;
+static uint32_t music_ticks = 0;
 static bool music_on = false;
+static int music_volume = 128;
 
-bool bs32x_snd_play_music(int, const void*, int)
+bool bs32x_snd_play_music(int index, const void*, int)
 {
+    if (!music_tried) {
+        music_tried = true;
+        const void* d = nullptr;
+        long size = 0;
+        if (bs32x_file_open_read("MUSIC.BS6", &d, &size)) {
+            music_file = static_cast<const uint8_t*>(d);
+        }
+    }
+    bs32x_snd_stop_music();
+    if (!music_file || index < 0 || index >= static_cast<int>(bs32x_le32(music_file + 4))) {
+        return false;
+    }
+    const uint8_t* e = music_file + 8 + 12 * index;
+    uint32_t at = bs32x_le32(e);
+    uint32_t size = bs32x_le32(e + 4);
+    if (at == 0 || size == 0) {
+        return false;
+    }
+    uintptr_t addr = reinterpret_cast<uintptr_t>(music_file + at);
+    if ((addr >> 20) != ((addr + size - 1) >> 20)) {
+        return false;       /* the Genesis side reads one 1 MB ROM bank */
+    }
+    music_ticks = bs32x_le32(e + 8);
     music_start = TimeCount;
     music_on = true;
+    Mars_SetMusicVolume(static_cast<uint8_t>(music_volume));
+    Mars_PlayTrack(0, index + 1, "", static_cast<int>(addr), static_cast<int>(size), 1);
     return true;
 }
 
 void bs32x_snd_stop_all(void)
 {
+    for (auto& s : snd_slots) {
+        s.end = TimeCount;
+    }
+    Bs32xSndCmd c = {};
+    c.kind = BS32X_SND_STOP_ALL;
+    bs32x_sound_command(&c);
 }
 
 void bs32x_snd_stop_music(void)
 {
+    if (music_on) {
+        Mars_StopTrack();
+    }
     music_on = false;
 }
 
-void bs32x_snd_set_volume(int, int)
+void bs32x_snd_set_volume(int which, int value)
 {
+    if (which == 1) {
+        /* music: game 0..20 (default 5) -> FM volume 0..255 */
+        int v = value * 255 / 10;
+        music_volume = v > 255 ? 255 : (v < 0 ? 0 : v);
+        if (music_on) {
+            Mars_SetMusicVolume(static_cast<uint8_t>(music_volume));
+        }
+        return;
+    }
+    if (which != 0) {
+        return;
+    }
+    /* sound effects: game 0..20 (default 10) -> 0..64, full from 12 */
+    int v = value * 64 / 12;
+    snd_volume = v > 64 ? 64 : (v < 0 ? 0 : v);
+    Bs32xSndCmd c = {};
+    c.kind = BS32X_SND_VOLUME;
+    c.vol = snd_volume;
+    bs32x_sound_command(&c);
 }
 
-/* no music player yet: report the song as played once after 8 seconds */
+/* the song has played once after its length */
 extern "C" void bs32x_music_tick(void)
 {
     extern bool sqPlayedOnce;
-    if (music_on && TimeCount - music_start > 70 * 8) {
+    if (music_on && TimeCount - music_start >= music_ticks) {
         sqPlayedOnce = true;
     }
 }

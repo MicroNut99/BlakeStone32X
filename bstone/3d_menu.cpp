@@ -167,7 +167,11 @@ CP_itemtype MainMenu[] = {
     { AT_DISABLED, "SAVE MISSION", reinterpret_cast<void (*)(int16_t)>(CP_SaveGame) },
     { AT_DISABLED, "", 0 },
     { AT_ENABLED, "BACK TO DEMO", CP_ExitOptions },
+#ifdef BS32X
+    { AT_DISABLED, "", 0 }      // BlakeStone32X: no LOGOFF (nothing to quit to)
+#else
     { AT_ENABLED, "LOGOFF", 0 }
+#endif
 };
 
 CP_itemtype GopMenu[] = {
@@ -1382,10 +1386,18 @@ void US_ControlPanel(
             MenuFadeIn();
             break;
 
+#ifdef BS32X
+        case -1:
+            // BlakeStone32X: no DOS to quit to; back goes back to the game
+            // (or the demo), like "BACK TO ..."
+            StartGame = 1;
+            break;
+#else
         case -1:
         case MM_LOGOFF:
             CP_Quit();
             break;
+#endif
 
         default:
             if (!StartGame) {

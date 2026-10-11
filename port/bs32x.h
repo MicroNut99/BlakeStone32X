@@ -49,6 +49,7 @@ bool bs32x_is_rom(const void *p);                    /* data in cart ROM (never 
 extern "C" int bs32x_lz4_decode(const unsigned char *src, int src_len, unsigned char *dst, int dst_len);
 /* sound: digitized PCM (8-bit unsigned, ~7 kHz) and music */
 bool bs32x_snd_play_pcm(int index, int priority, const void *data, int size, int actor_index, int channel);
+bool bs32x_snd_play_adlib(int sound_index, int priority, int actor_index, int channel);
 bool bs32x_snd_is_playing(void);
 bool bs32x_snd_is_channel_playing(int channel);
 bool bs32x_snd_play_music(int index, const void *data, int size);
