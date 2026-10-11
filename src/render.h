@@ -44,6 +44,8 @@ typedef struct {
 typedef struct {
 	int16_t height[MAXCOLS];
 	int16_t spanstart[MAXROWS / 2 + 2];
+	int (*timer)(void);      /* set on the master only: times walls and planes */
+	int t_walls, t_planes;
 } rwork_t;
 
 /* shared resources, set by R_Init */

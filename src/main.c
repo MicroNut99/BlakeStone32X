@@ -7,7 +7,7 @@
 #include "marshw.h"
 #include "render.h"
 
-#define VERSION   "B2"
+#define VERSION   "B3"
 #define BLOB_ADDR 0x02040000      /* ROM offset 0x40000, set by the build */
 #define FBW       320
 #define VIEWTOP   8
@@ -178,6 +178,7 @@ int main(void)
 	int i, sizeidx = 0, low = 0, floors = 1, twocpu = 1;
 	int prev = 0xFFFF, frames = 0, fps10 = 0, msframe = 0;   /* 0xFFFF: the START that began the test is not a press */
 	unsigned draw_sum = 0, mdraw_sum = 0, draw10 = 0, mdraw10 = 0;
+	unsigned wall_sum = 0, plane_sum = 0, wall10 = 0, plane10 = 0;
 	unsigned t_last, t_window;
 	uint32_t *hp = (uint32_t *)&hdr;
 
@@ -269,6 +270,9 @@ int main(void)
 		if (bt <= 0 || !(bt & SEGA_CTRL_START)) break;
 	}
 
+	work_pri.timer = Mars_GetWDTCount;   /* master half: walls / planes time */
+	work_sec.timer = 0;
+
 	ppx = (hdr.startx << 16) + 0x8000;
 	ppy = (hdr.starty << 16) + 0x8000;
 	pang = hdr.startang & 1023;
@@ -324,6 +328,8 @@ int main(void)
 				t2 = Mars_GetWDTCount();
 				draw_sum += t2 - t0;
 				mdraw_sum += t1 - t0;
+				wall_sum += work_pri.t_walls;
+				plane_sum += work_pri.t_planes;
 			}
 
 			/* fps over a 1 second window */
@@ -335,7 +341,9 @@ int main(void)
 				/* counts to tenths of ms: 4096 / 23.01136 MHz = 0.178 ms */
 				draw10 = draw_sum * 178 / 100 / frames;
 				mdraw10 = mdraw_sum * 178 / 100 / frames;
-				draw_sum = mdraw_sum = 0;
+				wall10 = wall_sum * 178 / 100 / frames;
+				plane10 = plane_sum * 178 / 100 / frames;
+				draw_sum = mdraw_sum = wall_sum = plane_sum = 0;
 				frames = 0;
 				t_window = now;
 			}
@@ -347,7 +355,10 @@ int main(void)
 			p = str_(p, "     ");
 			put_text(fbpix(), 8, VIEWTOP + 160 + 8, b);
 			p = str_(b, "FLOORS "); p = str_(p, floors ? "ON " : "OFF");
-			p = str_(p, "  CPUS "); p = utoa_(p, twocpu ? 2 : 1);
+			p = str_(p, " CPUS "); p = utoa_(p, twocpu ? 2 : 1);
+			p = str_(p, " W "); p = utoa_(p, wall10 / 10); p = str_(p, "."); p = utoa_(p, wall10 % 10);
+			p = str_(p, " P "); p = utoa_(p, plane10 / 10); p = str_(p, "."); p = utoa_(p, plane10 % 10);
+			p = str_(p, "     ");
 			put_text(fbpix(), 8, VIEWTOP + 160 + 18, b);
 			p = str_(b, "VIEW "); p = utoa_(p, w); p = str_(p, "X"); p = utoa_(p, h);
 			p = str_(p, "  DETAIL "); p = str_(p, low ? "LO" : "HI");
