@@ -5,3 +5,4 @@ build/
 !mars/src-md/m68k.bin
 __pycache__/
 build-game/
+build-tools/
