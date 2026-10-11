@@ -320,6 +320,41 @@ static void stop_screen(const char* title, const char* text)
     }
 }
 
+static char* hex8(char* p, uint32_t v)
+{
+    for (int i = 7; i >= 0; --i) {
+        int d = (v >> (i * 4)) & 15;
+        *p++ = static_cast<char>(d < 10 ? '0' + d : 'A' + d - 10);
+    }
+    *p = '\0';
+    return p;
+}
+
+extern "C" void bs32x_exception(int kind, unsigned pc, unsigned pr)
+{
+    static const char* const names[] = {
+        "?", "ILLEGAL INSTRUCTION", "INVALID SLOT", "ADDRESS ERROR", "DMA ADDRESS ERROR", "TRAPA",
+    };
+    char line[48];
+    char* p = line;
+    for (const char* s = "PC "; *s; ) {
+        *p++ = *s++;
+    }
+    p = hex8(p, pc);
+    for (const char* s = " PR "; *s; ) {
+        *p++ = *s++;
+    }
+    hex8(p, pr);
+    bs32x_text_clear();
+    bs32x_text(8, 8, "STOP SH2 EXCEPTION");
+    bs32x_text(8, 20, names[(kind >= 1 && kind <= 5) ? kind : 0]);
+    bs32x_text(8, 32, line);
+    bs32x_text(8, 44, last_log[0] ? last_log : "(no log)");
+    bs32x_text(8, 60, "PRESS RESET");
+    for (;;) {
+    }
+}
+
 void bs32x_fatal(const char* what)
 {
     stop_screen("STOP FATAL", what);

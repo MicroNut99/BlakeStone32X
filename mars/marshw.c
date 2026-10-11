@@ -1043,6 +1043,13 @@ void Mars_SetSecDMA1Callback(void (*cb)(void))
 
 void (*mars_vblank_hook)(void) = 0;   /* BlakeStone32X: game timer */
 
+/* BlakeStone32X: CPU exception report (the game build shows it on screen) */
+__attribute__((weak)) void bs32x_exception(int kind, unsigned pc, unsigned pr)
+{
+	(void)kind; (void)pc; (void)pr;
+	for (;;) ;
+}
+
 void pri_vbi_handler(void)
 {
 	mars_vblank_count++;

@@ -218,48 +218,48 @@ pri_vbr:
         .long   pri_stack       /* Cold Start SP */
         .long   pri_start       /* Manual Reset PC */
         .long   pri_stack       /* Manual Reset SP */
-        .long   pri_err         /* Illegal instruction */
+        .long   pri_err_ill     /* Illegal instruction */
         .long   0x00000000      /* reserved */
-        .long   pri_err         /* Invalid slot instruction */
+        .long   pri_err_slot    /* Invalid slot instruction */
         .long   0x00000000      /* reserved */
         .long   0x00000000      /* reserved */
-        .long   pri_err         /* CPU address error */
-        .long   pri_err         /* DMA address error */
+        .long   pri_err_addr    /* CPU address error */
+        .long   pri_err_dma     /* DMA address error */
         .long   pri_err         /* NMI vector */
         .long   pri_err         /* User break vector */
         .space  76              /* reserved */
-        .long   pri_err         /* TRAPA #32 */
-        .long   pri_err         /* TRAPA #33 */
-        .long   pri_err         /* TRAPA #34 */
-        .long   pri_err         /* TRAPA #35 */
-        .long   pri_err         /* TRAPA #36 */
-        .long   pri_err         /* TRAPA #37 */
-        .long   pri_err         /* TRAPA #38 */
-        .long   pri_err         /* TRAPA #39 */
-        .long   pri_err         /* TRAPA #40 */
-        .long   pri_err         /* TRAPA #41 */
-        .long   pri_err         /* TRAPA #42 */
-        .long   pri_err         /* TRAPA #43 */
-        .long   pri_err         /* TRAPA #44 */
-        .long   pri_err         /* TRAPA #45 */
-        .long   pri_err         /* TRAPA #46 */
-        .long   pri_err         /* TRAPA #47 */
-        .long   pri_err         /* TRAPA #48 */
-        .long   pri_err         /* TRAPA #49 */
-        .long   pri_err         /* TRAPA #50 */
-        .long   pri_err         /* TRAPA #51 */
-        .long   pri_err         /* TRAPA #52 */
-        .long   pri_err         /* TRAPA #53 */
-        .long   pri_err         /* TRAPA #54 */
-        .long   pri_err         /* TRAPA #55 */
-        .long   pri_err         /* TRAPA #56 */
-        .long   pri_err         /* TRAPA #57 */
-        .long   pri_err         /* TRAPA #58 */
-        .long   pri_err         /* TRAPA #59 */
-        .long   pri_err         /* TRAPA #60 */
-        .long   pri_err         /* TRAPA #61 */
-        .long   pri_err         /* TRAPA #62 */
-        .long   pri_err         /* TRAPA #63 */
+        .long   pri_err_trap    /* TRAPA #32 */
+        .long   pri_err_trap    /* TRAPA #33 */
+        .long   pri_err_trap    /* TRAPA #34 */
+        .long   pri_err_trap    /* TRAPA #35 */
+        .long   pri_err_trap    /* TRAPA #36 */
+        .long   pri_err_trap    /* TRAPA #37 */
+        .long   pri_err_trap    /* TRAPA #38 */
+        .long   pri_err_trap    /* TRAPA #39 */
+        .long   pri_err_trap    /* TRAPA #40 */
+        .long   pri_err_trap    /* TRAPA #41 */
+        .long   pri_err_trap    /* TRAPA #42 */
+        .long   pri_err_trap    /* TRAPA #43 */
+        .long   pri_err_trap    /* TRAPA #44 */
+        .long   pri_err_trap    /* TRAPA #45 */
+        .long   pri_err_trap    /* TRAPA #46 */
+        .long   pri_err_trap    /* TRAPA #47 */
+        .long   pri_err_trap    /* TRAPA #48 */
+        .long   pri_err_trap    /* TRAPA #49 */
+        .long   pri_err_trap    /* TRAPA #50 */
+        .long   pri_err_trap    /* TRAPA #51 */
+        .long   pri_err_trap    /* TRAPA #52 */
+        .long   pri_err_trap    /* TRAPA #53 */
+        .long   pri_err_trap    /* TRAPA #54 */
+        .long   pri_err_trap    /* TRAPA #55 */
+        .long   pri_err_trap    /* TRAPA #56 */
+        .long   pri_err_trap    /* TRAPA #57 */
+        .long   pri_err_trap    /* TRAPA #58 */
+        .long   pri_err_trap    /* TRAPA #59 */
+        .long   pri_err_trap    /* TRAPA #60 */
+        .long   pri_err_trap    /* TRAPA #61 */
+        .long   pri_err_trap    /* TRAPA #62 */
+        .long   pri_err_trap    /* TRAPA #63 */
         .long   pri_irq         /* FRT interrupt (Level 1) */
         .long   pri_irq         /* WDT interrupt (Level 2 & 3) */
         .long   pri_irq         /* DMA interrupt (Level 4 & 5) */
@@ -442,6 +442,32 @@ _bss_end:
 pri_err:
         rte
         nop
+
+! BlakeStone32X: report CPU exceptions on screen (bs32x_exception(kind, pc, pr))
+pri_err_ill:
+        bra     pri_err_show
+        mov     #1,r4
+pri_err_slot:
+        bra     pri_err_show
+        mov     #2,r4
+pri_err_addr:
+        bra     pri_err_show
+        mov     #3,r4
+pri_err_dma:
+        bra     pri_err_show
+        mov     #4,r4
+pri_err_trap:
+        bra     pri_err_show
+        mov     #5,r4
+pri_err_show:
+        mov.l   @r15,r5                 /* PC where it happened */
+        sts     pr,r6
+        mov.l   pri_err_func,r0
+        jmp     @r0
+        nop
+        .align  2
+pri_err_func:
+        .long   _bs32x_exception
 
 !-----------------------------------------------------------------------
 ! Primary IRQ handler
