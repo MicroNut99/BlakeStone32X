@@ -283,6 +283,9 @@ void SD_Shutdown()
 
     // Free music data
     for (int i = 0; i < LASTMUSIC; ++i) {
+#ifdef BS32X
+        if (!bs32x_is_rom(::audiosegs[STARTMUSIC + i]))
+#endif
         delete [] static_cast<uint8_t*>(::audiosegs[STARTMUSIC + i]);
     }
 
@@ -359,6 +362,17 @@ void SD_StartMusic(
     ::SD_MusicOff();
 
     ::sqPlayedOnce = false;
+
+#ifdef BS32X
+    // BlakeStone32X: music chunks may be left off the cart
+    if (::sd_is_music_enabled &&
+        (::audiostarts[STARTMUSIC + index + 1] - ::audiostarts[STARTMUSIC + index]) < 4)
+    {
+        static_cast<void>(bs32x_snd_play_music(index, nullptr, 0));   // (test build: event marker)
+        ::sqPlayedOnce = true;
+        return;
+    }
+#endif
 
     if (::sd_is_music_enabled) {
         ::music_index = index;

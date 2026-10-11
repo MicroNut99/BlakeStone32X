@@ -23,6 +23,29 @@ bool vid_fix_par = true;
 uint8_t palette1[256][3];
 uint8_t palette2[256][3];
 
+// BlakeStone32X memory model: the game's three VGA pages share one buffer
+// (vl_page_bytes), latches (offsets from FREESTART) live in their own memory,
+// read-only cart ROM on the 32X.
+static const int vl_page_bytes = 4 * SCREENSIZE;      // 320 x 208
+static const int vl_latch_start = 4 * FREESTART;
+static uint8_t* vl_latch_mem = nullptr;
+static bool vl_latch_writable = false;
+
+static inline int vl_fold(
+    int offset)
+{
+    return offset < vl_latch_start ? offset % vl_page_bytes : offset;
+}
+
+static inline uint8_t* vl_ptr(
+    int offset)
+{
+    if (offset >= vl_latch_start) {
+        return vl_latch_mem + (offset - vl_latch_start);
+    }
+    return ::vga_memory + offset;
+}
+
 void VL_WaitVBL(
     uint32_t vbls)
 {
@@ -41,6 +64,9 @@ void VL_SetVGAPlaneMode()
 {
     if (!::vga_memory) {
         ::vga_memory = bs32x_vid_vga_memory();
+        int writable = 0;
+        vl_latch_mem = bs32x_vid_latch_memory(&writable);
+        vl_latch_writable = (writable != 0);
     }
 
     if (!::vga_palette) {
@@ -75,9 +101,9 @@ void VH_UpdateScreen()
 {
     if (::displayofs != ::bufferofs) {
         std::uninitialized_copy_n(
-            &::vga_memory[::vl_get_offset(::bufferofs)],
+            vl_ptr(::vl_get_offset(::bufferofs)),
             ::vga_area,
-            &::vga_memory[::vl_get_offset(::displayofs)]);
+            vl_ptr(::vl_get_offset(::displayofs)));
     }
 
     bs32x_vid_present(::displayofs);
@@ -266,7 +292,7 @@ void VL_Plot(
 
     for (int i = 0; i < vga_scale; ++i) {
         std::uninitialized_fill_n(
-            &::vga_memory[offset],
+            vl_ptr(offset),
             ::vga_scale,
             color);
 
@@ -306,10 +332,10 @@ void VL_Bar(
 
     if (x == 0 && width == ::vga_width) {
         int count = height * ::vga_width;
-        std::uninitialized_fill_n(&::vga_memory[offset], count, color);
+        std::uninitialized_fill_n(vl_ptr(offset), count, color);
     } else {
         for (int i = 0; i < height; ++i) {
-            std::uninitialized_fill_n(&::vga_memory[offset], width, color);
+            std::uninitialized_fill_n(vl_ptr(offset), width, color);
             offset += vga_width;
         }
     }
@@ -321,6 +347,10 @@ void VL_MemToLatch(
     int height,
     int dest)
 {
+    if (!vl_latch_writable) {
+        return;   // 32X: latches were built on the PC and are in cart ROM
+    }
+
     int dst_pitch = ::vga_scale * width;
     int base_offset = ::vl_get_offset(dest);
 
@@ -334,7 +364,7 @@ void VL_MemToLatch(
 
                 for (int s = 0; s < ::vga_scale; ++s) {
                     std::uninitialized_fill_n(
-                        &::vga_memory[offset],
+                        vl_ptr(offset),
                         ::vga_scale,
                         pixel);
 
@@ -412,9 +442,9 @@ void VL_LatchToScreen(
     for (int h = 0; h < height; ++h) {
         for (int s = 0; s < ::vga_scale; ++s) {
             std::uninitialized_copy_n(
-                &::vga_memory[src_offset],
+                vl_ptr(src_offset),
                 src_pitch,
-                &::vga_memory[dst_offset]);
+                vl_ptr(dst_offset));
 
             src_offset += src_pitch;
             dst_offset += vga_width;
@@ -433,8 +463,8 @@ void VL_ScreenToScreen(
     width *= 4 * ::vga_scale;
     height *= ::vga_scale;
 
-    auto src_pixels = &::vga_memory[source];
-    auto dst_pixels = &::vga_memory[dest];
+    auto src_pixels = vl_ptr(vl_fold(source));
+    auto dst_pixels = vl_ptr(vl_fold(dest));
 
     for (int h = 0; h < height; ++h) {
         std::uninitialized_copy_n(
@@ -452,10 +482,14 @@ void JM_VGALinearFill(
     int length,
     uint8_t fill)
 {
-    std::uninitialized_fill_n(
-        &::vga_memory[::vl_get_offset(start)],
-        ::vga_scale * ::vga_scale * 4 * length,
-        fill);
+    int offset = ::vl_get_offset(start);
+    int count = 4 * length;
+
+    if (offset < vl_latch_start && offset + count > vl_page_bytes) {
+        count = vl_page_bytes - offset;   // pages share one buffer
+    }
+
+    std::uninitialized_fill_n(vl_ptr(offset), count, fill);
 }
 
 uint8_t vl_get_pixel(
@@ -463,13 +497,13 @@ uint8_t vl_get_pixel(
     int x,
     int y)
 {
-    return ::vga_memory[::vl_get_offset(base_offset, x, y)];
+    return *vl_ptr(::vl_get_offset(base_offset, x, y));
 }
 
 int vl_get_offset(
     int base_offset)
 {
-    return ::vga_scale * ::vga_scale * 4 * base_offset;
+    return vl_fold(4 * base_offset);
 }
 
 int vl_get_offset(
@@ -477,6 +511,5 @@ int vl_get_offset(
     int x,
     int y)
 {
-    return ::vga_scale *
-        (::vga_scale * (4 * base_offset) + (y * ::vga_width) + x);
+    return vl_fold(4 * base_offset) + (y * ::vga_width) + x;
 }

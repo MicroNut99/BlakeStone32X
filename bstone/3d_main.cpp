@@ -6485,7 +6485,11 @@ void* lzh_work_buffer;
 
 void InitPlaytemp()
 {
+#ifdef BS32X
+    g_playtemp.open(0);   // grows as levels are saved (32X has 256 KB of RAM)
+#else
     g_playtemp.open(1 * 1024 * 1024);
+#endif
     g_playtemp.set_size(0);
     g_playtemp.set_position(0);
 }

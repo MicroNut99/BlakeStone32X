@@ -2712,7 +2712,7 @@ void BMAmsg(
                 numlines++;
             }
         }
-        cheight = font->height * numlines + 1 + (TP_MARGIN * 2);
+        cheight = static_cast<int16_t>(bs32x_le16(&font->height)) * numlines + 1 + (TP_MARGIN * 2);
 
         pi.xl = BMAx2 + 1;
         pi.yl = BMAy2 + (BMAh2 - cheight) / 2;

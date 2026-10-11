@@ -439,7 +439,45 @@ static SpecialKeys special_keys = {
 namespace {
 
 
+#ifdef BS32X
+// BlakeStone32X: a tiny sorted map (std::map needs library code the 32X build lacks)
+class BindsNames {
+public:
+    using value_type = std::pair<ScanCode, const char*>;
+    using iterator = std::vector<value_type>::iterator;
+
+    void clear() { items_.clear(); }
+
+    const char*& operator[](ScanCode key)
+    {
+        auto it = lower(key);
+        if (it == items_.end() || it->first != key) {
+            it = items_.insert(it, value_type(key, nullptr));
+        }
+        return it->second;
+    }
+
+    iterator find(ScanCode key)
+    {
+        auto it = lower(key);
+        return (it != items_.end() && it->first == key) ? it : items_.end();
+    }
+
+    iterator begin() { return items_.begin(); }
+    iterator end() { return items_.end(); }
+
+private:
+    std::vector<value_type> items_;
+
+    iterator lower(ScanCode key)
+    {
+        return std::lower_bound(items_.begin(), items_.end(), key,
+            [](const value_type& v, ScanCode k) { return v.first < k; });
+    }
+}; // BindsNames
+#else
 using BindsNames = std::map<ScanCode, const char*>;
+#endif
 
 
 enum BindsFindDirection {
@@ -4201,14 +4239,14 @@ void Message(
 
     font = static_cast<fontstruct*>(grsegs[STARTFONT + fontnumber]);
 
-    h = font->height;
+    h = static_cast<int16_t>(bs32x_le16(&font->height));
     for (i = 0; i < strlen(string); i++) {
         if (string[i] == '\n') {
             if (w > mw) {
                 mw = w;
             }
             w = 0;
-            h += font->height;
+            h += static_cast<int16_t>(bs32x_le16(&font->height));
         } else {
             w += font->width[static_cast<int>(string[i])];
         }
@@ -4305,9 +4343,9 @@ uint32_t CacheCompData(
         data_length = ::ca_gr_last_expanded_size;
     } else {
         memcpy(CompHeader.NameId, &chunk[0], 4);
-        CompHeader.OriginalLen = ((uint32_t*)&chunk[4])[0];
-        CompHeader.CompType = (ct_TYPES)((int16_t*)&chunk[8])[0];
-        CompHeader.CompressLen = ((uint32_t*)&chunk[10])[0];
+        CompHeader.OriginalLen = bs32x_le32(&chunk[4]);
+        CompHeader.CompType = (ct_TYPES)static_cast<int16_t>(bs32x_le16(&chunk[8]));
+        CompHeader.CompressLen = bs32x_le32(&chunk[10]);
 
         data_length = CompHeader.OriginalLen;
 

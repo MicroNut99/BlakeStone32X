@@ -1844,7 +1844,7 @@ char* HandleControlCodes(
     *(first_ch + 1) = toupper(*(first_ch + 1));
 #endif
 
-    uint16_t code = *reinterpret_cast<const uint16_t*>(first_ch);
+    uint16_t code = bs32x_le16(first_ch);
     first_ch += 2;
 
     switch (code) {

@@ -18,7 +18,8 @@
 
 namespace {
 
-std::vector<uint8_t> vga(256 * 1024);
+std::vector<uint8_t> vga(320 * 208);
+std::vector<uint8_t> latch(64 * 1024);
 uint8_t palette[768];
 int frame_no = 0;
 int max_frames = 2000;
@@ -38,10 +39,11 @@ int music_start_frame[64];
 
 // "u<music> <period> <key>": tap key every period frames until that music starts
 struct UntilTap {
-    int music;
+    int music;      // stop when this music starts
     int period;
     int key;
     char ascii;
+    int after;      // start only after this music started (+period), -1: from the beginning
 };
 std::vector<UntilTap> untils;
 
@@ -97,11 +99,11 @@ void load_script()
         int anchor = -1;
         char name[32] = {};
         if (line[0] == 'u') {
-            int music = 0, period = 0;
-            if (std::sscanf(line + 1, "%d %d %31s", &music, &period, name) == 3) {
+            int music = 0, period = 0, after = -1;
+            if (std::sscanf(line + 1, "%d %d %31s %d", &music, &period, name, &after) >= 3) {
                 for (auto& k : key_names) {
                     if (std::strcmp(k.name, name) == 0) {
-                        untils.push_back({music, period, static_cast<int>(k.code), k.ascii});
+                        untils.push_back({music, period, static_cast<int>(k.code), k.ascii, after});
                     }
                 }
             }
@@ -135,7 +137,7 @@ void write_frame(int displayofs)
         return;
     }
     std::fprintf(f, "P6 320 200 255\n");
-    const uint8_t* src = &vga[4 * displayofs];
+    const uint8_t* src = &vga[(4 * displayofs) % (320 * 208)];
     for (int i = 0; i < 320 * 200; ++i) {
         const uint8_t* p = &palette[3 * src[i]];
         uint8_t rgb[3] = {
@@ -206,14 +208,44 @@ unsigned char* bs32x_vid_vga_memory(void)
     return vga.data();
 }
 
+unsigned char* bs32x_vid_latch_memory(int* writable)
+{
+    *writable = 1;
+    return latch.data();
+}
+
+// writes the latch area built by LoadLatchMem: this file goes into the 32X cart
+void bs32x_dump_latches(void)
+{
+    extern int destoff;
+    const char* path = std::getenv("BS32X_DUMP_LATCHES");
+    if (!path) {
+        return;
+    }
+    int size = 4 * (destoff - 80 * 208 * 3);
+    FILE* f = std::fopen(path, "wb");
+    if (f) {
+        std::fwrite(latch.data(), 1, static_cast<size_t>(size), f);
+        std::fclose(f);
+        std::fprintf(stderr, "LATCHES %d bytes -> %s\n", size, path);
+    }
+}
+
 void bs32x_vid_set_palette(const unsigned char* pal)
 {
     std::memcpy(palette, pal, 768);
 }
 
+void bs32x_dump_grsizes(void);
+
 void bs32x_vid_present(int displayofs)
 {
     init();
+    if (frame_no == 0) {
+        bs32x_dump_grsizes();
+        extern void bs32x_dump_grexp(void);
+        bs32x_dump_grexp();
+    }
     if (shots_all || shots.count(frame_no)) {
         write_frame(displayofs);
     }
@@ -221,7 +253,10 @@ void bs32x_vid_present(int displayofs)
     TimeCount += 2;
     if (frame_no >= max_frames) {
         std::fprintf(stderr, "BS32X host: %d frames done\n", frame_no);
-        std::exit(0);
+        extern void bs32x_mem_report(void);
+        bs32x_mem_report();
+        std::fflush(stderr);
+    std::_Exit(0);
     }
 }
 
@@ -240,6 +275,11 @@ void bs32x_in_update(void)
     }
     for (auto& u : untils) {
         if (music_start_frame[u.music & 63] >= 0 || u.period <= 0) {
+            continue;
+        }
+        if (u.after >= 0 && (music_start_frame[u.after & 63] < 0 ||
+            static_cast<int>(TimeCount) < music_start_frame[u.after & 63] + 2000))
+        {
             continue;
         }
         int ph = static_cast<int>(TimeCount) % u.period;
@@ -270,13 +310,16 @@ void bs32x_in_update(void)
 
 bool bs32x_file_open_read(const char* name, const void** data, long* size)
 {
+    extern bool mem_ignore;
     std::string key = upper(name);
     auto it = files.find(key);
+    mem_ignore = true;
     if (it == files.end()) {
         const char* dir = std::getenv("BS32X_DATA");
         std::string path = std::string(dir ? dir : ".") + "/" + key;
         FILE* f = std::fopen(path.c_str(), "rb");
         if (!f) {
+            mem_ignore = false;
             return false;
         }
         std::vector<uint8_t> buf;
@@ -288,9 +331,22 @@ bool bs32x_file_open_read(const char* name, const void** data, long* size)
         std::fclose(f);
         it = files.emplace(key, std::move(buf)).first;
     }
+    mem_ignore = false;
     *data = it->second.data();
     *size = static_cast<long>(it->second.size());
     return true;
+}
+
+bool bs32x_is_rom(const void* p)
+{
+    auto a = static_cast<const uint8_t*>(p);
+    for (auto& kv : files) {
+        const auto& v = kv.second;
+        if (!v.empty() && a >= v.data() && a <= v.data() + v.size()) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void bs32x_file_save(const char* name, const void* data, long size)
@@ -357,4 +413,187 @@ void bs32x_fatal(const char* what)
 {
     std::fprintf(stderr, "FATAL: %s\n", what);
     std::exit(1);
+}
+
+// ---- memory accounting for the 32X budget (PC test build only) ----
+#include <new>
+static size_t mem_now = 0, mem_peak = 0;
+struct LiveBlock { size_t size; void* site; };
+static std::map<void*, LiveBlock>* live = nullptr;
+static std::vector<std::pair<size_t, void*>> peak_snapshot;
+static std::vector<int> peak_grsegs;
+static uint32_t peak_tick = 0;
+static bool in_track = false;
+bool mem_ignore = false;   // file cache = cart ROM on the 32X, not counted
+static void* track_alloc(size_t n, void* site)
+{
+    auto p = static_cast<size_t*>(std::malloc(n + 16));
+    p[0] = n;
+    p[1] = (mem_ignore || in_track) ? 0 : 1;
+    if (p[1] && n >= 4096 && std::getenv("BS32X_MEMLOG")) {
+        std::fprintf(stderr, "NEW %zu from %p\n", n, site);
+    }
+    if (p[1]) {
+        mem_now += n;
+        if (std::getenv("BS32X_MEMPEAK")) {
+            in_track = true;
+            if (!live) {
+                live = new std::map<void*, LiveBlock>();
+            }
+            (*live)[p + 2] = {n, site};
+            if (mem_now > mem_peak) {
+                peak_snapshot.clear();
+                for (auto& kv : *live) {
+                    peak_snapshot.push_back({kv.second.size, kv.second.site});
+                }
+                extern std::vector<void*> grsegs;
+                peak_grsegs.clear();
+                for (size_t g = 0; g < grsegs.size(); ++g) {
+                    if (grsegs[g]) {
+                        auto it = live->find(grsegs[g]);
+                        peak_grsegs.push_back(static_cast<int>(g));
+                        peak_grsegs.push_back(it != live->end() ? static_cast<int>(it->second.size) : -1);
+                    }
+                }
+                peak_tick = TimeCount;
+            }
+            in_track = false;
+        }
+        if (mem_now > mem_peak) {
+            mem_peak = mem_now;
+        }
+    }
+    return p + 2;
+}
+void* operator new(size_t n)
+{
+    return track_alloc(n, __builtin_return_address(0));
+}
+void* operator new[](size_t n)
+{
+    return track_alloc(n, __builtin_return_address(0));
+}
+void operator delete(void* q) noexcept
+{
+    if (q) {
+        auto p = static_cast<size_t*>(q) - 2;
+        if (p[1]) {
+            mem_now -= p[0];
+            if (live && !in_track) {
+                in_track = true;
+                live->erase(q);
+                in_track = false;
+            }
+        }
+        std::free(p);
+    }
+}
+void operator delete[](void* p) noexcept
+{
+    operator delete(p);
+}
+void operator delete(void* p, size_t) noexcept
+{
+    operator delete(p);
+}
+void operator delete[](void* p, size_t) noexcept
+{
+    operator delete(p);
+}
+void bs32x_mem_report(void)
+{
+    extern int destoff;
+    std::fprintf(stderr, "MEM heap live %zu peak %zu, latch bytes %d\n",
+        mem_now, mem_peak, 4 * (destoff - 80 * 208 * 3));
+    std::fprintf(stderr, "PEAKTICK %u grsegs:", peak_tick);
+    for (size_t g = 0; g + 1 < peak_grsegs.size(); g += 2) {
+        std::fprintf(stderr, " %d:%d", peak_grsegs[g], peak_grsegs[g + 1]);
+    }
+    std::fprintf(stderr, "\n");
+    std::map<void*, std::pair<size_t, int>> by_site;
+    for (auto& b : peak_snapshot) {
+        by_site[b.second].first += b.first;
+        by_site[b.second].second += 1;
+    }
+    for (auto& kv : by_site) {
+        if (kv.second.first >= 1024) {
+            std::fprintf(stderr, "PEAK %zu bytes in %d blocks from %p\n", kv.second.first, kv.second.second, kv.first);
+        }
+    }
+}
+
+
+// ---- PC build tool: expanded size of every graphics chunk ----
+void bs32x_dump_grsizes(void)
+{
+    const char* path = std::getenv("BS32X_GRSIZES");
+    if (!path) {
+        return;
+    }
+    extern std::vector<void*> grsegs;
+    extern int ca_gr_last_expanded_size;
+    FILE* f = std::fopen(path, "w");
+    for (int c = 0; c < NUMCHUNKS; ++c) {
+        if (grsegs[c]) {
+            std::fprintf(f, "%d cached\n", c);
+            continue;
+        }
+        ca_gr_last_expanded_size = 0;
+        CA_CacheGrChunk(static_cast<int16_t>(c));
+        std::fprintf(f, "%d %d\n", c, grsegs[c] ? ca_gr_last_expanded_size : -1);
+        if (grsegs[c]) {
+            UNCACHEGRCHUNK(c);
+        }
+    }
+    std::fclose(f);
+    std::fflush(stderr);
+    std::_Exit(0);
+}
+
+
+// ---- PC build tool: pre-expanded graphics chunks for the cart (GREXP.BS6) ----
+// fonts, pictures and tiles (STARTFONT .. STARTEXTERNS-1), except full screens.
+// Format (little-endian): "GRX1", u32 count, u32 offset[count] (0 = not stored), data.
+void bs32x_dump_grexp(void)
+{
+    const char* path = std::getenv("BS32X_DUMP_GREXP");
+    if (!path) {
+        return;
+    }
+    extern std::vector<void*> grsegs;
+    extern int ca_gr_last_expanded_size;
+    std::vector<uint8_t> out(8 + 4 * NUMCHUNKS, 0);
+    auto put32 = [&out](size_t at, uint32_t v) {
+        out[at] = v & 255; out[at + 1] = (v >> 8) & 255; out[at + 2] = (v >> 16) & 255; out[at + 3] = v >> 24;
+    };
+    out[0] = 'G'; out[1] = 'R'; out[2] = 'X'; out[3] = '1';
+    put32(4, static_cast<uint32_t>(NUMCHUNKS));
+    int stored = 0;
+    for (int c = STARTFONT; c < STARTEXTERNS; ++c) {
+        if (grsegs[c]) {
+            continue;
+        }
+        ca_gr_last_expanded_size = 0;
+        CA_CacheGrChunk(static_cast<int16_t>(c));
+        if (!grsegs[c]) {
+            continue;
+        }
+        int size = ca_gr_last_expanded_size;
+        if (size > 0 && size < 60000) {
+            while (out.size() & 3) {
+                out.push_back(0);
+            }
+            put32(8 + 4 * c, static_cast<uint32_t>(out.size()));
+            auto p = static_cast<const uint8_t*>(grsegs[c]);
+            out.insert(out.end(), p, p + size);
+            ++stored;
+        }
+        UNCACHEGRCHUNK(c);
+    }
+    FILE* f = std::fopen(path, "wb");
+    std::fwrite(out.data(), 1, out.size(), f);
+    std::fclose(f);
+    std::fprintf(stderr, "GREXP %d chunks, %zu bytes -> %s\n", stored, out.size(), path);
+    std::fflush(stderr);
+    std::_Exit(0);
 }

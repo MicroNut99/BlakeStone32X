@@ -55,7 +55,7 @@ void VW_DrawPropString(
     fontstruct* font =
         static_cast<fontstruct*>(grsegs[STARTFONT + fontnumber]);
 
-    int height = font->height;
+    int height = static_cast<int16_t>(bs32x_le16(&font->height));
 
     int string_length = static_cast<int>(strlen(string));
 
@@ -64,7 +64,7 @@ void VW_DrawPropString(
         int width = font->width[ch];
 
         const uint8_t* source =
-            (reinterpret_cast<const uint8_t*>(font)) + font->location[ch];
+            (reinterpret_cast<const uint8_t*>(font)) + bs32x_le16(&font->location[ch]);
 
         for (int w = 0; w < width; ++w) {
             for (int h = 0; h < height; ++h) {
@@ -86,7 +86,7 @@ void VWL_MeasureString(
     int* height,
     fontstruct* font)
 {
-    *height = font->height;
+    *height = static_cast<int16_t>(bs32x_le16(&font->height));
 
     for (*width = 0; string[0] != '\0'; ++string) {
         // proportional width
@@ -225,15 +225,26 @@ int destoff;
 
 void LoadLatchMem()
 {
+#ifdef BS32X
+    // BlakeStone32X: on the 32X the latch area is prebuilt in cart ROM
+    // (made by the PC test build); only the offsets are computed here.
+    int latch_writable = 0;
+    static_cast<void>(bs32x_vid_latch_memory(&latch_writable));
+#endif
+
     int picnum = 0;
 
     //
     // tile 8s
     //
     latchpics[picnum++] = freelatch;
+    destoff = freelatch;
+
+#ifdef BS32X
+    if (latch_writable) {
+#endif
     CA_CacheGrChunk(STARTTILE8);
     const uint8_t* src = static_cast<const uint8_t*>(grsegs[STARTTILE8]);
-    destoff = freelatch;
 
     for (int i = 0; i < NUMTILE8; ++i) {
         VL_MemToLatch(src, 8, 8, destoff);
@@ -242,6 +253,11 @@ void LoadLatchMem()
     }
 
     UNCACHEGRCHUNK(STARTTILE8);
+#ifdef BS32X
+    } else {
+        destoff += 16 * NUMTILE8;
+    }
+#endif
 
     //
     // pics
@@ -250,16 +266,26 @@ void LoadLatchMem()
 
     for (int16_t i = LATCHPICS_LUMP_START; i <= LATCHPICS_LUMP_END; ++i) {
         latchpics[picnum++] = destoff;
-        CA_CacheGrChunk(i);
         int width = pictable[i - STARTPICS].width;
         int height = pictable[i - STARTPICS].height;
 
+#ifdef BS32X
+        if (latch_writable) {
+#endif
+        CA_CacheGrChunk(i);
         VL_MemToLatch(static_cast<const uint8_t*>(grsegs[i]),
                       width, height, destoff);
+        UNCACHEGRCHUNK(i);
+#ifdef BS32X
+        }
+#endif
 
         destoff += (width / 4) * height;
-        UNCACHEGRCHUNK(i);
     }
+
+#ifdef BS32X
+    bs32x_dump_latches();
+#endif
 }
 
 extern ControlInfo c;

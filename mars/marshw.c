@@ -1041,9 +1041,14 @@ void Mars_SetSecDMA1Callback(void (*cb)(void))
 
 /* ======================== INTERRUPT HANDLERS ======================== */
 
+void (*mars_vblank_hook)(void) = 0;   /* BlakeStone32X: game timer */
+
 void pri_vbi_handler(void)
 {
 	mars_vblank_count++;
+
+	if (mars_vblank_hook)
+		mars_vblank_hook();
 
 	if (mars_newpalette)
 	{

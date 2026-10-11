@@ -156,6 +156,11 @@ void SetupMovie(
         BufferLen = 64256;
     }
 
+#ifdef BS32X
+    // BlakeStone32X: only the 19 KB JAM logo is on the cart; keep the buffer small
+    BufferLen = 20480;
+#endif
+
     MovieBuffer = new char[BufferLen];
 }
 
@@ -274,6 +279,10 @@ bool MOVIE_LoadBuffer()
             ::Quit("Animation file is corrupt or truncated.");
         }
 
+        bstone::Endian::lei(blk.code);
+        bstone::Endian::lei(blk.block_num);
+        bstone::Endian::lei(blk.recsize);
+
         if (blk.code == AN_END_OF_ANIM) {
             return false;
         }
@@ -357,7 +366,7 @@ void MOVIE_HandlePage(
     case AN_SOUND: // Sound Chunk
     {
         uint16_t sound_chunk;
-        sound_chunk = *(uint16_t*)frame;
+        sound_chunk = bs32x_le16(frame);
 
         ::sd_play_player_sound(
             sound_chunk,
@@ -383,7 +392,7 @@ void MOVIE_HandlePage(
     case AN_PAUSE: // Pause
     {
         uint16_t vbls;
-        vbls = *(uint16_t*)frame;
+        vbls = bs32x_le16(frame);
         IN_UserInput(vbls);
         BufferPtr += blk.recsize;
 
@@ -475,6 +484,13 @@ void MOVIE_HandlePage(
 bool MOVIE_Play(
     MovieStuff_t* MovieStuff)
 {
+#ifdef BS32X
+    // BlakeStone32X: cutscenes are not on the cart; skip before allocating
+    if (!bstone::FileStream::is_exists(::data_dir + MovieStuff->file_name)) {
+        return false;
+    }
+#endif
+
     // Init our Movie Stuff...
     //
 

@@ -187,13 +187,13 @@ void generic_scale_shape(
     //
     // calculate edges of the shape
     //
-    int x1 = static_cast<int>((xcent + (shape->leftpix * xscale)) >> 20);
+    int x1 = static_cast<int>((xcent + (static_cast<int>(bs32x_le16(&shape->leftpix)) * xscale)) >> 20);
 
     if (x1 >= (viewwidth * vga_scale)) {
         return; // off the right side
 
     }
-    int x2 = static_cast<int>((xcent + (shape->rightpix * xscale)) >> 20);
+    int x2 = static_cast<int>((xcent + (static_cast<int>(bs32x_le16(&shape->rightpix)) * xscale)) >> 20);
 
     if (x2 < 0) {
         return; // off the left side
@@ -231,7 +231,7 @@ void generic_scale_shape(
     }
 
     dc_y = 0;
-    int swidth = shape->rightpix - shape->leftpix;
+    int swidth = static_cast<int>(bs32x_le16(&shape->rightpix)) - static_cast<int>(bs32x_le16(&shape->leftpix));
 
     for (; x1 <= x2; ++x1, frac += screenscale) {
         if (wallheight[x1] > height) {
@@ -247,7 +247,7 @@ void generic_scale_shape(
         }
 
         linecmds = reinterpret_cast<uint16_t*>(
-            &dc_seg[shape->dataofs[texturecolumn]]);
+            &dc_seg[bs32x_le16(&shape->dataofs[texturecolumn])]);
 
         generic_scale_masked_post(height / 4, draw_mode);
     }
@@ -378,13 +378,13 @@ void MegaSimpleScaleShape(
     //
     // calculate edges of the shape
     //
-    int x1 = static_cast<int>((xcent + (shape->leftpix * xscale)) >> 20);
+    int x1 = static_cast<int>((xcent + (static_cast<int>(bs32x_le16(&shape->leftpix)) * xscale)) >> 20);
 
     if (x1 >= (viewwidth * vga_scale)) {
         return; // off the right side
 
     }
-    int x2 = static_cast<int>((xcent + (shape->rightpix * xscale)) >> 20);
+    int x2 = static_cast<int>((xcent + (static_cast<int>(bs32x_le16(&shape->rightpix)) * xscale)) >> 20);
 
     if (x2 < 0) {
         return; // off the left side
@@ -413,7 +413,7 @@ void MegaSimpleScaleShape(
         x2 = (viewwidth * vga_scale) - 1;
     }
 
-    int swidth = shape->rightpix - shape->leftpix;
+    int swidth = static_cast<int>(bs32x_le16(&shape->rightpix)) - static_cast<int>(bs32x_le16(&shape->leftpix));
 
     for (; x1 <= x2; ++x1, frac += screenscale) {
         dc_x = x1;
@@ -425,7 +425,7 @@ void MegaSimpleScaleShape(
         }
 
         linecmds = reinterpret_cast<uint16_t*>(
-            &dc_seg[shape->dataofs[texturecolumn]]);
+            &dc_seg[bs32x_le16(&shape->dataofs[texturecolumn])]);
 
         generic_scale_masked_post(height, e_sdm_shaded);
     }

@@ -1332,7 +1332,7 @@ void TP_HandleCodes()
         *(first_ch + 1) = toupper(*(first_ch + 1));
 #endif
         uint16_t subcode;
-        uint16_t code = *reinterpret_cast<const uint16_t*>(first_ch);
+        uint16_t code = bs32x_le16(first_ch);
         first_ch += 2;
 
         switch (code) {
@@ -1345,7 +1345,7 @@ void TP_HandleCodes()
                 switch (*s) {
                 case TP_CONTROL_CHAR:
                     s++;
-                    subcode = *reinterpret_cast<const uint16_t*>(s);
+                    subcode = bs32x_le16(s);
                     s += 2;
                     switch (subcode) {
                     case TP_CNVT_CODE('S', 'X'):
@@ -2209,7 +2209,7 @@ void TP_CachePage(
             *script = toupper(*script);
             *(script + 1) = toupper(*(script + 1));
 #endif
-            code = *reinterpret_cast<const uint16_t*>(script);
+            code = bs32x_le16(script);
             script += 2;
             switch (code) {
             case TP_CNVT_CODE('S', 'H'):
@@ -2488,7 +2488,7 @@ void TP_InitScript(
             *script = toupper(*script);
             *(script + 1) = toupper(*(script + 1));
 #endif
-            code = *reinterpret_cast<const uint16_t*>(script);
+            code = bs32x_le16(script);
             script += 2;
             switch (code) {
             case TP_CNVT_CODE('E', 'P'):

@@ -234,4 +234,14 @@ bool FileStream::is_exists(
     return bs32x_file_open_read(file_name.c_str(), &data, &size);
 }
 
+const uint8_t* FileStream::rom_data() const
+{
+    if (!context_) {
+        return nullptr;
+    }
+
+    auto f = static_cast<Bs32xFile*>(context_);
+    return f->writable ? nullptr : f->rdata;
+}
+
 } // bstone

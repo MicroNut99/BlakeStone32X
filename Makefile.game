@@ -1,0 +1,99 @@
+# BlakeStone32X - full game build (BStone game code on the 32X)
+# make -f Makefile.game GENDEV=/path/to/toolchain GAMEDIR=/path/to/BLAKE
+# Needs a PC C++ compiler too: the PC test build makes LATCHES.BS6 and GREXP.BS6.
+ROOTDIR  ?= $(GENDEV)
+GAMEDIR  ?= ../BLAKE
+NAME     ?= BlakeStone32X_B6
+TITLE    ?= BLAKE STONE 32X B6
+
+PREFIX = $(ROOTDIR)/sh-elf/bin/sh-elf-
+CC = $(PREFIX)gcc
+CXX = $(PREFIX)g++
+AS = $(PREFIX)as
+OBJC = $(PREFIX)objcopy
+B = build-game
+
+INT32 = -U__INT32_TYPE__ -D__INT32_TYPE__=int -U__UINT32_TYPE__ -D__UINT32_TYPE__=unsigned \
+        -U__INT_LEAST32_TYPE__ -D__INT_LEAST32_TYPE__=int -U__UINT_LEAST32_TYPE__ -D__UINT_LEAST32_TYPE__=unsigned
+CFLAGS = -c -m2 -mb -Os -fomit-frame-pointer -ffunction-sections -fdata-sections -D__32X__ -DMARS \
+         $(INT32) -Imars -Isrc -Iport
+CXXFLAGS = $(CFLAGS) -std=c++14 -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit \
+           -D_GLIBCXX_ASSERTIONS -DBS32X -Ibstone -include bs32x.h -w
+LDFLAGS = -T mars/mars-ssf.ld -Wl,-Map=$(B)/game.map -nostdlib -Wl,--gc-sections --specs=nosys.specs -Wl,--allow-multiple-definition
+LIBS = -L$(ROOTDIR)/sh-elf/lib/gcc/sh-elf/12.1.0 -L$(ROOTDIR)/sh-elf/sh-elf/lib -lm -lc -lgcc -lnosys -lc
+
+GAME = 3d_act1 3d_act2 3d_agent 3d_debug 3d_draw 3d_draw2 3d_game 3d_inter 3d_main \
+       3d_menu 3d_msgs 3d_play 3d_scale 3d_state colormap d3_d2 d3_dr2 id_ca id_in id_pm \
+       id_sd id_sdd id_us id_us_1 id_vh jm_cio jm_free jm_io jm_lzh jm_tp markhack movie \
+       scale stub vgapal bstone_binary_reader bstone_binary_writer bstone_cl_args \
+       bstone_crc32 bstone_istream bstone_memory_binary_reader bstone_memory_stream \
+       bstone_string_helper
+OBJS = $(B)/crt0.o $(B)/mars_main.o $(B)/marshw.o $(B)/sh2_fixed.o $(B)/font.o $(B)/mars_text.o \
+       $(B)/lz4d.o $(B)/cxxrt.o $(B)/vl_port.o $(B)/file_stream_port.o $(B)/mars_platform.o \
+       $(addprefix $(B)/,$(addsuffix .o,$(GAME)))
+
+DATA = $(B)/data/VSWAP.BS6 $(B)/data/VGAHEAD.BS6 $(B)/data/VGADICT.BS6 $(B)/data/VGAGRAPH.BS6 \
+       $(B)/data/GREXP.BS6 $(B)/data/IANIM.BS6 $(B)/data/MAPHEAD.BS6 $(B)/data/MAPTEMP.BS6 \
+       $(B)/data/AUDIOHED.BS6 $(B)/data/AUDIOT.BS6 $(B)/data/LATCHES.BS6
+
+all: $(B)/$(NAME).32x
+
+$(B):
+	mkdir -p $(B)
+$(B)/data:
+	mkdir -p $(B)/data
+
+$(B)/crt0.o: mars/crt0.s mars/src-md/m68k.bin | $(B)
+	$(AS) --big -Imars $< -o $@
+$(B)/sh2_fixed.o: mars/sh2_fixed.s | $(B)
+	$(AS) --big $< -o $@
+$(B)/marshw.o: mars/marshw.c | $(B)
+	$(CC) $(CFLAGS) -O1 $< -o $@
+$(B)/font.o: src/font.c | $(B)
+	$(CC) $(CFLAGS) $< -o $@
+$(B)/%.o: port/%.c | $(B)
+	$(CC) $(CFLAGS) $< -o $@
+$(B)/%.o: port/%.cpp port/bs32x.h | $(B)
+	$(CXX) $(CXXFLAGS) $< -o $@
+$(B)/3d_main.o: bstone/3d_main.cpp port/bs32x.h | $(B)
+	$(CXX) $(CXXFLAGS) -Dmain=bstone_main $< -o $@
+$(B)/%.o: bstone/%.cpp port/bs32x.h | $(B)
+	$(CXX) $(CXXFLAGS) $< -o $@
+
+$(B)/game.elf: $(OBJS)
+	$(CXX) $(LDFLAGS) $(OBJS) $(LIBS) -o $@
+
+# game data for the cart (your own files, never committed)
+$(B)/data/VGADICT.BS6 $(B)/data/IANIM.BS6: | $(B)/data
+	cp $(GAMEDIR)/$(notdir $@) $@
+$(B)/data/VSWAP.BS6: tools/mkvswap.py | $(B)/data
+	python3 tools/mkvswap.py $(GAMEDIR) BS6 $(B)/data
+$(B)/data/VGAHEAD.BS6 $(B)/data/VGAGRAPH.BS6: $(B)/data/GREXP.BS6 tools/mkgraph.py
+	python3 tools/mkgraph.py $(GAMEDIR) BS6 $(B)/data/GREXP.BS6 $(B)/data
+
+# PC test build: runs the real game code to produce the latch area and the
+# pre-expanded graphics chunks exactly as the game makes them
+host/bstone_host:
+	$(MAKE) -C host
+$(B)/data/GREXP.BS6: host/bstone_host | $(B)/data
+	BS32X_DATA=$(GAMEDIR) BS32X_DUMP_GREXP=$(abspath $@) host/bstone_host
+$(B)/data/LATCHES.BS6: host/bstone_host | $(B)/data
+	BS32X_DATA=$(GAMEDIR) BS32X_DUMP_LATCHES=$(abspath $@) BS32X_FRAMES=40 host/bstone_host
+$(B)/data/MAPHEAD.BS6 $(B)/data/MAPTEMP.BS6: tools/mkmaps.py tools/lz4c.py | $(B)/data
+	python3 tools/mkmaps.py $(GAMEDIR) BS6 $(B)/data
+$(B)/data/AUDIOHED.BS6 $(B)/data/AUDIOT.BS6: tools/mkaudio.py | $(B)/data
+	python3 tools/mkaudio.py $(GAMEDIR) BS6 $(B)/data
+
+$(B)/romfs.bin: $(DATA) tools/mkromfs.py
+	python3 tools/mkromfs.py $@ $(DATA)
+
+$(B)/romheaderfix: romheaderfix/romheaderfix.c | $(B)
+	gcc -O2 -w -o $@ $<
+
+$(B)/$(NAME).32x: $(B)/game.elf $(B)/romfs.bin $(B)/romheaderfix tools/mkrom.py
+	$(OBJC) -O binary $(B)/game.elf $(B)/game.bin
+	python3 tools/mkrom.py $(B)/game.bin $(B)/romfs.bin 4096 $@
+	$(B)/romheaderfix "SEGA 32X" "$(TITLE)" $@
+
+clean:
+	rm -rf $(B)

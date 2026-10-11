@@ -1013,6 +1013,9 @@ void CheckKeys()
             if (old_num != music_num) {
                 ClearMemory();
 
+#ifdef BS32X
+                if (!bs32x_is_rom(audiosegs[STARTMUSIC + old_num]))
+#endif
                 delete [] audiosegs[STARTMUSIC + old_num];
                 audiosegs[STARTMUSIC + old_num] = nullptr;
 

@@ -90,6 +90,11 @@ public:
     static bool is_exists(
         const std::string& file_name);
 
+#ifdef BS32X
+    // BlakeStone32X: direct pointer to read-only file data (cart ROM), or null
+    const uint8_t* rom_data() const;
+#endif
+
 
 private:
     void* context_;

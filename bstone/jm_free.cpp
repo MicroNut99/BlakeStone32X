@@ -304,6 +304,7 @@ void CAL_SetupAudioFile()
     length = static_cast<int32_t>(handle.get_size());
     ::audiostarts = new int32_t[length / 4];
     handle.read(::audiostarts, length);
+    bstone::Endian::lei(::audiostarts, length / 4);
     handle.close();
 #else
     audiohuffman = (huffnode*)&audiodict;
@@ -336,6 +337,8 @@ void CAL_SetupGrFile()
     }
 
     handle.read(&::grhuffman, sizeof(::grhuffman));
+    bstone::Endian::lei(reinterpret_cast<uint16_t*>(&::grhuffman),
+        sizeof(::grhuffman) / sizeof(uint16_t));
 
     //
     // load the data offsets from ???head.ext
@@ -373,6 +376,9 @@ void CAL_SetupGrFile()
         NUMPICS * sizeof(pictabletype),
         ::grhuffman);
 
+    bstone::Endian::lei(reinterpret_cast<int16_t*>(::pictable),
+        NUMPICS * sizeof(pictabletype) / sizeof(int16_t));
+
     delete [] compseg;
 }
 
@@ -399,6 +405,9 @@ void CAL_SetupMapFile()
 
     handle.read(&header.RLEWtag, sizeof(header.RLEWtag));
     handle.read(&header.headeroffsets, sizeof(header.headeroffsets));
+    bstone::Endian::lei(header.RLEWtag);
+    bstone::Endian::lei(header.headeroffsets,
+        sizeof(header.headeroffsets) / sizeof(header.headeroffsets[0]));
 
     rlew_tag = header.RLEWtag;
 
@@ -441,6 +450,11 @@ void CAL_SetupMapFile()
         maphandle.read(
             &map_header->name,
             sizeof(map_header->name));
+
+        bstone::Endian::lei(map_header->planestart, 3);
+        bstone::Endian::lei(map_header->planelength, 3);
+        bstone::Endian::lei(map_header->width);
+        bstone::Endian::lei(map_header->height);
     }
 
     //
@@ -492,12 +506,18 @@ void CheckForEpisodes()
     const bstone::StringList aog_file_names = {
         "AUDIOHED.BS6",
         "AUDIOT.BS6",
+#ifndef BS32X
+        // BlakeStone32X: the big cutscene files do not fit on the cart
+        // (IANIM, the 19 KB JAM logo, does)
         "EANIM.BS6",
         "GANIM.BS6",
+#endif
         "IANIM.BS6",
         "MAPHEAD.BS6",
         "MAPTEMP.BS6",
+#ifndef BS32X
         "SANIM.BS6",
+#endif
         "VGADICT.BS6",
         "VGAGRAPH.BS6",
         "VGAHEAD.BS6",
@@ -712,6 +732,9 @@ void PreDemo()
         //
         UNCACHEGRCHUNK(APOGEEPALETTE);
 
+#ifdef BS32X
+        if (!bs32x_is_rom(audiosegs[STARTMUSIC + APOGFNFM_MUS]))
+#endif
         delete [] audiosegs[STARTMUSIC + APOGFNFM_MUS];
         audiosegs[STARTMUSIC + APOGFNFM_MUS] = nullptr;
 
@@ -734,7 +757,9 @@ void PreDemo()
         // Show JAM logo
         //
         if (!DoMovie(mv_intro, 0)) {
+#ifndef BS32X
             ::Quit("JAM animation (IANIM.xxx) does not exist.");
+#endif
         }
 
         // ---------------------

@@ -52,6 +52,7 @@ int Mars_PollMouse(void);
 int Mars_ParseMousePacket(int mouse, int* pmx, int* pmy);
 
 extern volatile unsigned mars_vblank_count;
+extern void (*mars_vblank_hook)(void);
 extern volatile unsigned mars_pwdt_ovf_count;
 extern volatile unsigned mars_swdt_ovf_count;
 extern uint16_t mars_cd_ok;

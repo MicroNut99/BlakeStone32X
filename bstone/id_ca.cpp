@@ -150,9 +150,10 @@ int32_t GRFILEPOS(
 
     offset = c * 3;
 
-    value = *(int32_t*)(((uint8_t*)grstarts) + offset);
-
-    value &= 0x00ffffffl;
+    {
+        const uint8_t* b = reinterpret_cast<const uint8_t*>(grstarts) + offset;
+        value = b[0] | (b[1] << 8) | (b[2] << 16);   // 3-byte LE, unaligned
+    }
 
     if (value == 0xffffffl) {
         value = -1;
@@ -250,6 +251,7 @@ void CAL_GetGrChunkLength(
 {
     grhandle.set_position(GRFILEPOS(chunk));
     grhandle.read(&chunkexplen, sizeof(chunkexplen));
+    bstone::Endian::lei(chunkexplen);
 
     chunkcomplen = GRFILEPOS(chunk + 1) - GRFILEPOS(chunk) - 4;
 }
@@ -518,7 +520,9 @@ void CA_Startup()
     ca_levelbit = 1;
     ca_levelnum = 0;
 
+#ifndef BS32X
     ::ca_buffer.reserve(BUFFERSIZE);
+#endif
 }
 
 /*
@@ -555,6 +559,17 @@ void CA_CacheAudioChunk(
     audiohandle.set_position(pos);
 
 #ifndef AUDIOHEADERLINKED
+
+#ifdef BS32X
+    // BlakeStone32X: audio chunks are used straight from cart ROM
+    if (audiohandle.rom_data()) {
+        // (chunks left off the cart, like the music, have no data)
+        audiosegs[chunk] = compressed > 0 ?
+            const_cast<uint8_t*>(audiohandle.rom_data() + pos) : nullptr;
+        CloseAudioFile();
+        return;
+    }
+#endif
 
     audiosegs[chunk] = new uint8_t[compressed];
     audiohandle.read(audiosegs[chunk], compressed);
@@ -666,7 +681,9 @@ void CAL_ExpandGrChunk(
         //
         // everything else has an explicit size longword
         //
-        expanded = bstone::Endian::le(*reinterpret_cast<int32_t*>(source));
+        int32_t length_le;
+        std::memcpy(&length_le, source, 4);   // BS32X: source may be unaligned (ROM)
+        expanded = bstone::Endian::le(length_le);
         source += 4; // skip over length
     }
 
@@ -690,6 +707,42 @@ void CAL_ExpandGrChunk(
 =
 ======================
 */
+#ifdef BS32X
+// BlakeStone32X: fonts, pictures and tiles are stored pre-expanded in GREXP.BS6
+// (built on the PC); they are used straight from cart ROM and never freed.
+static const uint8_t* bs32x_grexp(
+    int chunk)
+{
+    static const uint8_t* data = nullptr;
+    static uint32_t count = 0;
+    static bool tried = false;
+
+    if (!tried) {
+        tried = true;
+        const void* d = nullptr;
+        long size = 0;
+
+        if (bs32x_file_open_read("GREXP.BS6", &d, &size) && size > 8) {
+            data = static_cast<const uint8_t*>(d);
+
+            if (data[0] == 'G' && data[1] == 'R' && data[2] == 'X' && data[3] == '1') {
+                count = data[4] | (data[5] << 8) | (data[6] << 16) | (uint32_t(data[7]) << 24);
+            } else {
+                data = nullptr;
+            }
+        }
+    }
+
+    if (!data || chunk < 0 || static_cast<uint32_t>(chunk) >= count) {
+        return nullptr;
+    }
+
+    const uint8_t* e = data + 8 + 4 * chunk;
+    uint32_t offset = e[0] | (e[1] << 8) | (e[2] << 16) | (uint32_t(e[3]) << 24);
+    return offset ? data + offset : nullptr;
+}
+#endif
+
 void CA_CacheGrChunk(
     int16_t chunk)
 {
@@ -702,6 +755,13 @@ void CA_CacheGrChunk(
         return; // allready in memory
 
     }
+
+#ifdef BS32X
+    if (auto rom = ::bs32x_grexp(chunk)) {
+        grsegs[chunk] = const_cast<uint8_t*>(rom);
+        return;
+    }
+#endif
 //
 // load the chunk into a buffer, either the miscbuffer if it fits, or allocate
 // a larger buffer
@@ -718,6 +778,15 @@ void CA_CacheGrChunk(
 
     compressed = GRFILEPOS(next) - pos;
 
+
+#ifdef BS32X
+    if (::grhandle.rom_data()) {
+        // read the compressed chunk straight from cart ROM
+        source = const_cast<uint8_t*>(::grhandle.rom_data() + pos);
+        ::CAL_ExpandGrChunk(chunk, source);
+        return;
+    }
+#endif
 
     ::grhandle.set_position(pos);
 
@@ -756,11 +825,18 @@ void CA_CacheScreen(
     }
     compressed = GRFILEPOS(next) - pos;
 
+#ifdef BS32X
+    if (grhandle.rom_data()) {
+        source = const_cast<uint8_t*>(grhandle.rom_data() + pos);
+    } else
+#endif
+    {
     grhandle.set_position(pos);
 
     ::ca_buffer.resize(compressed);
     grhandle.read(::ca_buffer.data(), compressed);
     source = ::ca_buffer.data();
+    }
 
     source += 4; // skip over length
 
@@ -807,6 +883,29 @@ void CA_CacheMap(
         compressed = mapheaderseg[mapnum]->planelength[plane];
 
         dest = &mapsegs[plane];
+
+#ifdef BS32X
+        if (rlew_tag == 0x4C5A) {
+            // BlakeStone32X maps: expanded plane, LZ4-compressed, straight from ROM
+            const uint8_t* rom = maphandle.rom_data();
+            std::vector<uint8_t> tmp;
+
+            if (!rom) {
+                tmp.resize(compressed);
+                maphandle.set_position(pos);
+                maphandle.read(tmp.data(), compressed);
+            }
+
+            const uint8_t* lz = rom ? rom + pos : tmp.data();
+
+            if (bs32x_lz4_decode(lz, compressed, reinterpret_cast<uint8_t*>(*dest), size) != size) {
+                ::Quit("Bad map plane.");
+            }
+
+            bstone::Endian::lei(*dest, 64 * 64);
+            continue;
+        }
+#endif
 
         maphandle.set_position(pos);
         ::ca_buffer.resize(compressed);
@@ -916,6 +1015,16 @@ void CA_CacheMarks()
     }
 
 
+#ifdef BS32X
+    // BlakeStone32X: data is in cart ROM, no read buffering needed
+    for (i = 0; i < NUMCHUNKS; i++) {
+        if ((grneeded[i] & ca_levelbit) && !grsegs[i]) {
+            ::CA_CacheGrChunk(i);
+        }
+    }
+    return;
+#endif
+
 //
 // go through and load in anything still needed
 //
@@ -993,6 +1102,9 @@ void CA_CannotOpen(
 void UNCACHEGRCHUNK(
     int chunk)
 {
+#ifdef BS32X
+    if (!bs32x_is_rom(grsegs[chunk]))
+#endif
     delete [] static_cast<char*>(grsegs[chunk]);
     grsegs[chunk] = nullptr;
 
