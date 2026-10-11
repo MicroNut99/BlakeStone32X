@@ -1,0 +1,5 @@
+build/
+*.32x
+*.BS6
+*.bin
+!mars/src-md/m68k.bin
