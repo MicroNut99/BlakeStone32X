@@ -38,6 +38,15 @@ def main():
     for i, t in enumerate(p0):
         tm[i] = t if 0 < t < 64 else 0      # walls only; doors (88-105) and areas open for the speed test
 
+    # Fusion skips byte writes of colour 0 to the 32X frame buffer, so never draw index 0:
+    # map it to the darkest other colour
+    dark = min(range(1, 256), key=lambda i: sum(pal[i*3:i*3+3]))
+    cmap = bytes(dark if c == 0 else c for c in cmap[:64*256])
+
+    def nearest1(rgb):
+        i = nearest(pal, rgb)
+        return dark if i == 0 else i
+
     def avg(pic):
         c = vs['chunks'][pic]; r = g = b = 0
         for p in c: r += pal[p*3]; g += pal[p*3+1]; b += pal[p*3+2]
@@ -61,8 +70,8 @@ def main():
     hdr = struct.pack('>20I', 0x42533332, 1, nw, mapnum, start[0], start[1], ang, ceil, floor,
                       [1, 6, 3, 4, 1, 2][mapnum % 6], [36, 51, 62, 63, 18, 52][mapnum % 6],
                       o_pal, o_cm, o_tm, o_dir, size,
-                      nearest(pal, (255, 255, 255)), nearest(pal, (0, 0, 0)),
-                      nearest(pal, avg(ceil)), nearest(pal, avg(floor)))
+                      nearest1((255, 255, 255)), dark,
+                      nearest1(avg(ceil)), nearest1(avg(floor)))
     hdr += m['name'].encode('latin-1')[:15].ljust(16, b'\0')
     assert len(hdr) == HDR
     open(out, 'wb').write(hdr + body)

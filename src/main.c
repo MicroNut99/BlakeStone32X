@@ -7,7 +7,7 @@
 #include "marshw.h"
 #include "render.h"
 
-#define VERSION   "B1"
+#define VERSION   "B2"
 #define BLOB_ADDR 0x02040000      /* ROM offset 0x40000, set by the build */
 #define FBW       320
 #define VIEWTOP   8
@@ -44,10 +44,14 @@ static void put_text(uint8_t *fb, int x, int y, const char *s)
 		if (c < 0x20 || c > 0x7F) c = '?';
 		g = font8x8 + (c - 0x20) * 8;
 		if (x > FBW - 8) return;
+		/* 16-bit writes: Fusion skips byte writes of colour 0 to the frame buffer */
 		for (r = 0; r < 8; r++) {
-			uint8_t *d = fb + (y + r) * FBW + x;
-			for (i = 0; i < 8; i++)
-				d[i] = (g[r] & (0x80 >> i)) ? white : black;
+			uint16_t *d = (uint16_t *)(fb + (y + r) * FBW + x);
+			for (i = 0; i < 4; i++) {
+				unsigned hi = (g[r] & (0x80 >> (i * 2))) ? white : black;
+				unsigned lo = (g[r] & (0x40 >> (i * 2))) ? white : black;
+				d[i] = (uint16_t)((hi << 8) | lo);
+			}
 		}
 	}
 }
@@ -172,12 +176,15 @@ int main(void)
 {
 	char b[64], *p;
 	int i, sizeidx = 0, low = 0, floors = 1, twocpu = 1;
-	int prev = 0, frames = 0, fps10 = 0, msframe = 0;
-	unsigned t_last, t_window, t_frame;
+	int prev = 0xFFFF, frames = 0, fps10 = 0, msframe = 0;   /* 0xFFFF: the START that began the test is not a press */
+	unsigned draw_sum = 0, mdraw_sum = 0, draw10 = 0, mdraw10 = 0;
+	unsigned t_last, t_window;
 	uint32_t *hp = (uint32_t *)&hdr;
 
 	Mars_Init();
 	Mars_InitVideo(224);
+	SH2_WDT_WTCSR_TCNT = 0x5A00;   /* WDT count = 0 */
+	SH2_WDT_WTCSR_TCNT = 0xA53E;   /* WDT on, interval mode, clock / 4096 (as D32XR) */
 
 	/* temporary palette until the game palette is loaded: 0 black, 1 white */
 	memset(pal, 0, sizeof(pal));
@@ -301,15 +308,22 @@ int main(void)
 			move_player(bt, ticks ? ticks : 1);
 			R_SetCamera(&view, ppx, ppy, pang);
 
-			/* render */
-			t_frame = mars_vblank_count;
-			if (twocpu) {
-				memcpy(UNCACHED(&shared_view), &view, sizeof(view));
-				MARS_SYS_COMM4 = CMD_RENDER;
-				R_Render(&view, 0, view.cols / 2, &work_pri);
-				while (MARS_SYS_COMM4 != CMD_NONE) ;
-			} else {
-				R_Render(&view, 0, view.cols, &work_pri);
+			/* render, timed with the WDT (4096 SH2 clocks per count) */
+			{
+				int t0 = Mars_GetWDTCount(), t1, t2;
+				if (twocpu) {
+					memcpy(UNCACHED(&shared_view), &view, sizeof(view));
+					MARS_SYS_COMM4 = CMD_RENDER;
+					R_Render(&view, 0, view.cols / 2, &work_pri);
+					t1 = Mars_GetWDTCount();
+					while (MARS_SYS_COMM4 != CMD_NONE) ;
+				} else {
+					R_Render(&view, 0, view.cols, &work_pri);
+					t1 = Mars_GetWDTCount();
+				}
+				t2 = Mars_GetWDTCount();
+				draw_sum += t2 - t0;
+				mdraw_sum += t1 - t0;
 			}
 
 			/* fps over a 1 second window */
@@ -318,13 +332,19 @@ int main(void)
 			if (now - t_window >= 60) {
 				fps10 = frames * 600 / (now - t_window);
 				msframe = (now - t_window) * 1000 / 60 / frames;
+				/* counts to tenths of ms: 4096 / 23.01136 MHz = 0.178 ms */
+				draw10 = draw_sum * 178 / 100 / frames;
+				mdraw10 = mdraw_sum * 178 / 100 / frames;
+				draw_sum = mdraw_sum = 0;
 				frames = 0;
 				t_window = now;
 			}
-			(void)t_frame;
 
 			p = str_(b, "FPS "); p = utoa_(p, fps10 / 10); p = str_(p, "."); p = utoa_(p, fps10 % 10);
-			p = str_(p, "  MS "); p = utoa_(p, msframe); p = str_(p, "   ");
+			p = str_(p, "  MS "); p = utoa_(p, msframe);
+			p = str_(p, "  DRAW "); p = utoa_(p, draw10 / 10); p = str_(p, "."); p = utoa_(p, draw10 % 10);
+			p = str_(p, " M "); p = utoa_(p, mdraw10 / 10); p = str_(p, "."); p = utoa_(p, mdraw10 % 10);
+			p = str_(p, "     ");
 			put_text(fbpix(), 8, VIEWTOP + 160 + 8, b);
 			p = str_(b, "FLOORS "); p = str_(p, floors ? "ON " : "OFF");
 			p = str_(p, "  CPUS "); p = utoa_(p, twocpu ? 2 : 1);

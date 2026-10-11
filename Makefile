@@ -4,8 +4,8 @@ ROOTDIR  ?= $(GENDEV)
 GAMEDIR  ?= ../BLAKE
 BSTONE   ?= ../bstone
 MAPNUM   ?= 1
-NAME     ?= BlakeStone32X_B1
-TITLE    ?= BLAKE STONE 32X B1
+NAME     ?= BlakeStone32X_B2
+TITLE    ?= BLAKE STONE 32X B2
 BLOBOFS  = 262144
 
 PREFIX = $(ROOTDIR)/sh-elf/bin/sh-elf-

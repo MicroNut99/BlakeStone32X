@@ -140,7 +140,12 @@ static void RAMCODE R_Span(const view_t *v, int k, int xa, int xb, int32_t psx, 
 			uint8_t *c = v->fb + (half - k) * pitch + xa;
 			uint8_t *f = v->fb + (half + k - 1) * pitch + xa;
 			uint8_t cv = r_ceilflat, fv = r_floorflat;
-			do { *c++ = cv; *f++ = fv; } while (--n);
+			uint16_t *c16, *f16;
+			int pairs;
+			if ((uintptr_t)c & 1) { *c++ = cv; *f++ = fv; n--; }
+			c16 = (uint16_t *)c; f16 = (uint16_t *)f;
+			for (pairs = n >> 1; pairs > 0; pairs--) { *c16++ = cv * 0x0101; *f16++ = fv * 0x0101; }
+			if (n & 1) { *(uint8_t *)c16 = cv; *(uint8_t *)f16 = fv; }
 		}
 		return;
 	}
@@ -167,14 +172,33 @@ static void RAMCODE R_Span(const view_t *v, int k, int xa, int xb, int32_t psx, 
 			*f++ = (uint16_t)(b | (b << 8));
 		} while (--n);
 	} else {
+		/* pixel pairs as 16-bit writes: half the frame buffer accesses */
 		uint8_t *c = v->fb + (half - k) * pitch + xa;
 		uint8_t *f = v->fb + (half + k - 1) * pitch + xa;
-		do {
+		uint16_t *c16, *f16;
+		int pairs;
+		if ((uintptr_t)c & 1) {
 			unsigned i = ((xy >> 3) & 0x1F80) | ((xy >> 25) & 0x7E);
 			xy += xystep;
 			*c++ = sh[pp[i]];
 			*f++ = sh[pp[i + 1]];
-		} while (--n);
+			n--;
+		}
+		c16 = (uint16_t *)c; f16 = (uint16_t *)f;
+		for (pairs = n >> 1; pairs > 0; pairs--) {
+			unsigned i = ((xy >> 3) & 0x1F80) | ((xy >> 25) & 0x7E);
+			unsigned j;
+			xy += xystep;
+			j = ((xy >> 3) & 0x1F80) | ((xy >> 25) & 0x7E);
+			xy += xystep;
+			*c16++ = (uint16_t)((sh[pp[i]] << 8) | sh[pp[j]]);
+			*f16++ = (uint16_t)((sh[pp[i + 1]] << 8) | sh[pp[j + 1]]);
+		}
+		if (n & 1) {
+			unsigned i = ((xy >> 3) & 0x1F80) | ((xy >> 25) & 0x7E);
+			*(uint8_t *)c16 = sh[pp[i]];
+			*(uint8_t *)f16 = sh[pp[i + 1]];
+		}
 	}
 }
 
