@@ -22,6 +22,7 @@ class CPU:
             if lo == 6: r[n] = (r[n]-4) & M32; s.wl(r[n], r[m])
             elif lo == 5: r[n] = (r[n]-2) & M32; s.ww(r[n], r[m] & 0xFFFF); s.writes.append(('w', r[n], r[m] & 0xFFFF))
             elif lo == 0: s.wb(r[n], r[m]); s.writes.append(('b', r[n], r[m] & 0xFF))
+            elif lo == 1: s.ww(r[n], r[m] & 0xFFFF); s.writes.append(('w', r[n], r[m] & 0xFFFF))
             elif lo == 9: r[n] &= r[m]
             elif lo == 11: r[n] |= r[m]
             elif lo == 8: s.T = int((r[n] & r[m]) == 0)
@@ -48,6 +49,7 @@ class CPU:
         elif hi == 0:
             if op == 0x000B: return nxt, s.pr
             if lo == 12: r[n] = sx8(s.rb(r[0] + r[m])) & M32
+            elif lo == 13: r[n] = sx16(s.rw((r[0] + r[m]) & M32)) & M32
             else: raise ValueError(hex(op))
         elif hi == 0xC:
             k = (op >> 8) & 15

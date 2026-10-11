@@ -7,7 +7,7 @@
 #include "marshw.h"
 #include "render.h"
 
-#define VERSION   "B3"
+#define VERSION   "B4"
 #define BLOB_ADDR 0x02040000      /* ROM offset 0x40000, set by the build */
 #define FBW       320
 #define VIEWTOP   8
@@ -175,10 +175,12 @@ static const short sizes[][2] = { {320, 160}, {288, 144}, {256, 128}, {224, 112}
 int main(void)
 {
 	char b[64], *p;
-	int i, sizeidx = 0, low = 0, floors = 1, twocpu = 1;
+	int i, sizeidx = 0, detail = DETAIL_MIX, floors = 1, twocpu = 1;
 	int prev = 0xFFFF, frames = 0, fps10 = 0, msframe = 0;   /* 0xFFFF: the START that began the test is not a press */
 	unsigned draw_sum = 0, mdraw_sum = 0, draw10 = 0, mdraw10 = 0;
 	unsigned wall_sum = 0, plane_sum = 0, wall10 = 0, plane10 = 0;
+	unsigned work_sum = 0, work10 = 0;
+	static const char *const detailname[3] = { "HI ", "MIX", "LO " };
 	unsigned t_last, t_window;
 	uint32_t *hp = (uint32_t *)&hdr;
 
@@ -257,7 +259,7 @@ int main(void)
 	log_line(b);
 	if (MARS_SYS_COMM4 != CMD_NONE) stop("SLAVE SH2 DID NOT ANSWER");
 
-	log_line("A FLOORS  B SIZE  C DETAIL  START CPUS");
+	log_line("A FLOORS B SIZE C HI/MIX/LO START CPUS");
 	log_line("PRESS START");
 	for (;;) {
 		int bt = Mars_ReadController(0);
@@ -286,10 +288,11 @@ int main(void)
 		for (;;) {
 			int bt, pressed, ticks, w, h;
 			unsigned now;
+			int tf0 = Mars_GetWDTCount();   /* whole frame work, without the flip wait */
 
 			if (redo) {   /* view changed: clear both buffers, rebuild tables */
 				w = sizes[sizeidx][0]; h = sizes[sizeidx][1];
-				R_SetupView(&view, w, h, low);
+				R_SetupView(&view, w, h, detail);
 				view.fb = fbpix() + VIEWTOP * FBW + (FBW - w) / 2;
 				clear_fb();
 				redo--;
@@ -303,7 +306,7 @@ int main(void)
 			prev = bt;
 			if (pressed & SEGA_CTRL_A) floors ^= 1;
 			if (pressed & SEGA_CTRL_B) { sizeidx = (sizeidx + 1) % NUMSIZES; redo = 2; }
-			if (pressed & SEGA_CTRL_C) { low ^= 1; redo = 2; }
+			if (pressed & SEGA_CTRL_C) { detail = (detail + 1) % 3; redo = 2; }
 			if (pressed & SEGA_CTRL_START) twocpu ^= 1;
 
 			now = mars_vblank_count;
@@ -343,7 +346,8 @@ int main(void)
 				mdraw10 = mdraw_sum * 178 / 100 / frames;
 				wall10 = wall_sum * 178 / 100 / frames;
 				plane10 = plane_sum * 178 / 100 / frames;
-				draw_sum = mdraw_sum = wall_sum = plane_sum = 0;
+				work10 = work_sum * 178 / 100 / frames;
+				draw_sum = mdraw_sum = wall_sum = plane_sum = work_sum = 0;
 				frames = 0;
 				t_window = now;
 			}
@@ -361,12 +365,15 @@ int main(void)
 			p = str_(p, "     ");
 			put_text(fbpix(), 8, VIEWTOP + 160 + 18, b);
 			p = str_(b, "VIEW "); p = utoa_(p, w); p = str_(p, "X"); p = utoa_(p, h);
-			p = str_(p, "  DETAIL "); p = str_(p, low ? "LO" : "HI");
+			p = str_(p, " DETAIL "); p = str_(p, detailname[detail]);
+			p = str_(p, " F "); p = utoa_(p, work10 / 10); p = str_(p, "."); p = utoa_(p, work10 % 10);
+			p = str_(p, "     ");
 			put_text(fbpix(), 8, VIEWTOP + 160 + 28, b);
 			p = str_(b, "X "); p = utoa_(p, ppx >> 16); p = str_(p, " Y "); p = utoa_(p, ppy >> 16);
 			p = str_(p, " ANG "); p = utoa_(p, pang); p = str_(p, "   ");
 			put_text(fbpix(), 8, VIEWTOP + 160 + 38, b);
 
+			work_sum += Mars_GetWDTCount() - tf0;
 			Mars_FlipFrameBuffers(1);
 		}
 	}

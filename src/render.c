@@ -21,6 +21,10 @@ extern void R_SpanPairsAsm(uint16_t *c_end, uint16_t *f_end, int pairs, uint32_t
 	uint32_t step_neg, const uint8_t *pp, const uint8_t *sh);
 extern void R_ColAsm(uint8_t *dst, int count, int32_t frac, int32_t step,
 	const uint8_t *src, const uint8_t *sh, int pitch);
+extern void R_SpanLoAsm(uint16_t *c_end, uint16_t *f_end, int count, uint32_t xy_last,
+	uint32_t step_neg, const uint8_t *pp, const uint16_t *sh16);
+extern void R_ColAsm16(uint16_t *dst, int count, int32_t frac, int32_t step,
+	const uint8_t *src, const uint16_t *sh16, int pitch);
 #else
 #define RAMCODE
 static int32_t FMUL(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b) >> 16); }
@@ -60,6 +64,27 @@ static void R_ColAsm(uint8_t *d, int n, int32_t frac, int32_t step,
 		frac += step;
 	} while (--n);
 }
+
+static void R_SpanLoAsm(uint16_t *c, uint16_t *f, int n, uint32_t xy,
+	uint32_t step, const uint8_t *pp, const uint16_t *sh16)
+{
+	do {
+		unsigned i = TIDX(xy);
+		xy += step;
+		*--c = sh16[(int8_t)pp[i]];
+		*--f = sh16[(int8_t)pp[i + 1]];
+	} while (--n);
+}
+
+static void R_ColAsm16(uint16_t *d, int n, int32_t frac, int32_t step,
+	const uint8_t *src, const uint16_t *sh16, int pitch)
+{
+	do {
+		*d = sh16[(int8_t)src[(frac >> 16) & 63]];
+		d = (uint16_t *)((uint8_t *)d + pitch);
+		frac += step;
+	} while (--n);
+}
 #endif
 
 #define TEXIDX(xy) ((((xy) >> 3) & 0x1F80) | (((xy) >> 25) & 0x7E))
@@ -77,6 +102,8 @@ static int r_nsd = 1, r_sm = 36;
 static int32_t r_camx[MAXCOLS];
 static int32_t r_rowdist[MAXROWS / 2 + 2];
 static const uint8_t *r_shadeptr[MAXROWS + 1];   /* middle (+128) of a rotated shade table */
+static const uint16_t *r_shadeptr16[MAXROWS + 1]; /* same, each entry = colour * 0x0101 (two pixels) */
+static uint16_t r_cmap16[64 * 256] __attribute__((aligned(16)));
 static int32_t r_halff;
 
 #define PLANELEN 0xC000   /* tan(fov/2) = 0.75 */
@@ -93,8 +120,11 @@ int R_Init(const uint8_t *blob, const bshead_t *h, uint8_t *tilemap_ram, uint8_t
 	memcpy(tilemap_ram, blob + h->ofs_tilemap, MAPSIZE * MAPSIZE);
 	/* rotated: row[k] = colormap[(k - 128) & 255], used as (row + 128)[signed texel] */
 	for (i = 0; i < 64; i++)
-		for (k = 0; k < 256; k++)
-			colormap_ram[i * 256 + k] = cm[i * 256 + ((k - 128) & 255)];
+		for (k = 0; k < 256; k++) {
+			uint8_t c8 = cm[i * 256 + ((k - 128) & 255)];
+			colormap_ram[i * 256 + k] = c8;
+			r_cmap16[i * 256 + k] = (uint16_t)(c8 * 0x0101);
+		}
 	r_tilemap = tilemap_ram;
 	r_colormap = colormap_ram;
 
@@ -120,14 +150,16 @@ int R_Init(const uint8_t *blob, const bshead_t *h, uint8_t *tilemap_ram, uint8_t
 	return 0;
 }
 
-void R_SetupView(view_t *v, int pixw, int rows, int lowdetail)
+void R_SetupView(view_t *v, int pixw, int rows, int detail)
 {
 	int x, k, cols, half, maxscale, normalshade;
+	int lowdetail = detail == DETAIL_LO;
 
 	cols = lowdetail ? pixw / 2 : pixw;
 	v->cols = cols;
 	v->rows = rows;
 	v->lowdetail = lowdetail;
+	v->lowplanes = detail == DETAIL_MIX;
 	half = rows / 2;
 
 	for (x = 0; x < cols; x++)
@@ -148,6 +180,7 @@ void R_SetupView(view_t *v, int pixw, int rows, int lowdetail)
 		if (i < 0) i = 0;
 		if (i > 63) i = 63;
 		r_shadeptr[k] = r_colormap + (i << 8) + 128;
+		r_shadeptr16[k] = r_cmap16 + (i << 8) + 128;
 	}
 }
 
@@ -204,15 +237,35 @@ static void RAMCODE R_Span(const view_t *v, int k, int xa, int xb, int32_t psx, 
 	pp = r_planepics;
 
 	if (v->lowdetail) {
+		/* LO: one texel per column, a column is two pixels */
 		uint16_t *c = (uint16_t *)(v->fb + (half - k) * pitch) + xa;
 		uint16_t *f = (uint16_t *)(v->fb + (half + k - 1) * pitch) + xa;
-		do {
+		R_SpanLoAsm(c + n, f + n, n, xy + (uint32_t)(n - 1) * xystep, (uint32_t)0 - xystep,
+			pp, r_shadeptr16[k]);
+	} else if (v->lowplanes) {
+		/* MIX: full-resolution columns, one texel per aligned pixel pair */
+		uint8_t *c = v->fb + (half - k) * pitch + xa;
+		uint8_t *f = v->fb + (half + k - 1) * pitch + xa;
+		int pairs;
+		if ((uintptr_t)c & 1) {
 			unsigned i = TEXIDX(xy);
-			unsigned a = sh[(int8_t)pp[i]], b = sh[(int8_t)pp[i + 1]];
 			xy += xystep;
-			*c++ = (uint16_t)(a | (a << 8));
-			*f++ = (uint16_t)(b | (b << 8));
-		} while (--n);
+			*c++ = sh[(int8_t)pp[i]];
+			*f++ = sh[(int8_t)pp[i + 1]];
+			n--;
+		}
+		pairs = n >> 1;
+		if (pairs) {
+			uint32_t st2 = xystep << 1;
+			R_SpanLoAsm((uint16_t *)c + pairs, (uint16_t *)f + pairs, pairs,
+				xy + (uint32_t)(pairs - 1) * st2, (uint32_t)0 - st2, pp, r_shadeptr16[k]);
+			xy += (uint32_t)pairs * st2;
+		}
+		if (n & 1) {
+			unsigned i = TEXIDX(xy);
+			c[n - 1] = sh[(int8_t)pp[i]];
+			f[n - 1] = sh[(int8_t)pp[i + 1]];
+		}
 	} else {
 		/* pixel pairs as 16-bit writes, drawn right to left by the SH2 loop */
 		uint8_t *c = v->fb + (half - k) * pitch + xa;
@@ -307,14 +360,8 @@ void RAMCODE R_Render(const view_t *v, int x0, int x1, rwork_t *w)
 		if (frac < 0) frac = 0;
 
 		if (v->lowdetail) {
-			uint16_t *d = (uint16_t *)(v->fb + y0 * pitch) + x;
-			const int p2 = pitch >> 1;
-			do {
-				unsigned c = sh[(int8_t)src[(frac >> 16) & 63]];
-				*d = (uint16_t)(c | (c << 8));
-				d += p2;
-				frac += step;
-			} while (--n);
+			R_ColAsm16((uint16_t *)(v->fb + y0 * pitch) + x, n, frac, step, src,
+				r_shadeptr16[h > MAXROWS ? MAXROWS : h], pitch);
 		} else {
 			R_ColAsm(v->fb + y0 * pitch + x, n, frac, step, src, sh, pitch);
 		}

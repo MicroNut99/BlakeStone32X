@@ -34,7 +34,8 @@ typedef struct {
 	int32_t dirx, diry;      /* 16.16 unit vector */
 	int32_t planex, planey;  /* 16.16 camera plane */
 	int cols, rows;          /* render columns (pixels/2 in low detail), rows */
-	int lowdetail;
+	int lowdetail;           /* LO: everything at half horizontal resolution */
+	int lowplanes;           /* MIX: walls full, floors/ceilings half */
 	int floors;
 	uint8_t *fb;             /* top-left pixel of the view */
 	int pitch;               /* bytes per framebuffer line */
@@ -56,7 +57,10 @@ extern uint8_t r_planepics[8192];
 extern uint8_t r_ceilflat, r_floorflat;
 
 int  R_Init(const uint8_t *blob, const bshead_t *h, uint8_t *tilemap_ram, uint8_t *colormap_ram);
-void R_SetupView(view_t *v, int pixw, int rows, int lowdetail);  /* builds tables (not hot) */
+#define DETAIL_HI  0
+#define DETAIL_MIX 1
+#define DETAIL_LO  2
+void R_SetupView(view_t *v, int pixw, int rows, int detail);  /* builds tables (not hot) */
 void R_SetCamera(view_t *v, int32_t px, int32_t py, int ang);
 void R_Render(const view_t *v, int x0, int x1, rwork_t *w);
 

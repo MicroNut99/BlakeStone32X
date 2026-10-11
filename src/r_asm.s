@@ -146,3 +146,87 @@ _R_ColAsm:
         mov.l   @r15+,r9
         rts
         mov.l   @r15+,r8
+
+!-----------------------------------------------------------------------
+! void R_SpanLoAsm(uint16_t *c_end, uint16_t *f_end, int count,
+!                  uint32_t xy_last, uint32_t step_neg,
+!                  const uint8_t *pp, const uint16_t *sh16);
+! One texel per 16-bit write (two pixels), ceiling and floor, right to left.
+! sh16 points at the middle of a rotated table of colour*0x0101 words.
+!-----------------------------------------------------------------------
+        .align  4
+        .global _R_SpanLoAsm
+_R_SpanLoAsm:
+        mov.l   r8,@-r15
+        mov.l   r9,@-r15
+        mov.l   r10,@-r15
+        mov.l   r11,@-r15
+        mov.l   r12,@-r15
+        mov.l   @(20,r15),r8            /* step (negated) */
+        mov.l   @(24,r15),r10           /* pp */
+        mov.l   @(28,r15),r12           /* sh16 */
+        mov     r10,r11
+        add     #1,r11
+        mov.w   .Lmask1f80b,r9
+1:
+        mov     r7,r0
+        shlr16  r0
+        mov     r7,r1
+        shlr8   r0
+        shlr2   r1
+        shlr    r0
+        shlr    r1
+        and     #126,r0
+        and     r9,r1
+        or      r1,r0
+        add     r8,r7
+        mov.b   @(r0,r10),r2            /* ceiling texel */
+        mov.b   @(r0,r11),r3            /* floor texel */
+        mov     r2,r0
+        add     r0,r0
+        mov.w   @(r0,r12),r2
+        mov     r3,r0
+        add     r0,r0
+        mov.w   @(r0,r12),r3
+        mov.w   r2,@-r4
+        dt      r6
+        bf/s    1b
+        mov.w   r3,@-r5
+
+        mov.l   @r15+,r12
+        mov.l   @r15+,r11
+        mov.l   @r15+,r10
+        mov.l   @r15+,r9
+        rts
+        mov.l   @r15+,r8
+
+        .align  1
+.Lmask1f80b:
+        .word   0x1F80
+
+!-----------------------------------------------------------------------
+! void R_ColAsm16(uint16_t *dst, int count, int32_t frac, int32_t step,
+!                 const uint8_t *src, const uint16_t *sh16, int pitch);
+! Low-detail wall column: one 16-bit write (two pixels) per row.
+!-----------------------------------------------------------------------
+        .align  4
+        .global _R_ColAsm16
+_R_ColAsm16:
+        mov.l   r8,@-r15
+        mov.l   @(4,r15),r1             /* src */
+        mov.l   @(8,r15),r2             /* sh16 */
+        mov.l   @(12,r15),r3            /* pitch */
+1:
+        mov     r6,r0
+        add     r7,r6
+        shlr16  r0
+        and     #63,r0
+        mov.b   @(r0,r1),r0
+        add     r0,r0
+        mov.w   @(r0,r2),r8
+        mov.w   r8,@r4
+        dt      r5
+        bf/s    1b
+        add     r3,r4
+        rts
+        mov.l   @r15+,r8
