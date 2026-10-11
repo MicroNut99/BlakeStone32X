@@ -35,7 +35,15 @@ Free Software Foundation, Inc.,
 
 
 #include <cstdint>
+#ifndef BS32X
 #include "bstone_audio_mixer.h"
+#else
+namespace bstone {
+enum ActorType { AT_NONE, AT_ACTOR, AT_DOOR, AT_WALL };
+enum ActorChannel { AC_VOICE, AC_WEAPON, AC_ITEM, AC_HIT_WALL, AC_NO_WAY, AC_INTERROGATION, };
+enum SoundType { ST_NONE, ST_ADLIB_MUSIC, ST_ADLIB_SFX, ST_PCM };
+} // bstone
+#endif
 
 
 struct objtype;
@@ -78,7 +86,11 @@ extern bool sd_has_audio;
 extern bool sd_is_sound_enabled;
 extern bool sd_is_music_enabled;
 extern int16_t DigiMap[];
+#ifdef BS32X
+extern volatile uint32_t TimeCount; // Global time in ticks (70 Hz, kept by the platform layer)
+#else
 extern std::atomic<uint32_t> TimeCount; // Global time in ticks
+#endif
 
 extern bool sqActive;
 extern bool sqPlayedOnce;

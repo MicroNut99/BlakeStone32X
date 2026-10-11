@@ -25,7 +25,81 @@ Free Software Foundation, Inc.,
 #ifndef BSTONE_STRING_HELPER_INCLUDED
 #define BSTONE_STRING_HELPER_INCLUDED
 
+#ifdef BS32X
+// BlakeStone32X: no iostreams/locale on the 32X; same interface, plain C conversions
+#include <cctype>
+#include <cstdlib>
+#include <string>
+#include <vector>
+#include <type_traits>
 
+namespace bstone {
+
+using StringList = std::vector<std::string>;
+
+class StringHelper {
+public:
+    StringHelper() = delete;
+
+    static char to_lower(
+        char value);
+
+    static std::string to_lower(
+        const std::string& value);
+
+    template<typename T, typename U>
+    static T lexical_cast(
+        const U& src_value)
+    {
+        static_assert(std::is_same<T, std::string>::value, "BS32X lexical_cast: only to std::string");
+        return std::to_string(src_value);
+    }
+
+    template<typename T, typename U>
+    static bool lexical_cast(
+        const T& src_value,
+        U& dst_value)
+    {
+        return lc_assign(src_value, dst_value);
+    }
+
+private:
+    template<typename T>
+    static bool lc_assign(const T& src_value, std::string& dst_value)
+    {
+        dst_value = std::to_string(src_value);
+        return true;
+    }
+
+    template<typename U>
+    static bool lc_assign(const std::string& src_value, U& dst_value)
+    {
+        static_assert(std::is_integral<U>::value, "BS32X lexical_cast: only to integers");
+        const char* text = src_value.c_str();
+        char* end = nullptr;
+        long value = std::strtol(text, &end, 10);
+        if (end == text || *end != '\0') {
+            return false;
+        }
+        dst_value = static_cast<U>(value);
+        return true;
+    }
+
+public:
+    static bool is_iequal(
+        const std::string& a,
+        const std::string& b);
+
+    static const std::string& get_empty();
+}; // StringHelper
+
+} // bstone
+
+#else // BS32X
+
+
+
+#include "bs32x.h"
 #include <locale>
 #include <stdexcept>
 #include <string>
@@ -72,7 +146,7 @@ public:
             return result;
         }
 
-        throw std::runtime_error("lexical_cast");
+        bs32x_fatal("lexical_cast");
     }
 
     template<typename T, typename U>
@@ -102,4 +176,5 @@ public:
 } // bstone
 
 
+#endif // BS32X
 #endif // BSTONE_STRING_HELPER_INCLUDED

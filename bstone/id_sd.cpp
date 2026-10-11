@@ -55,7 +55,9 @@ Free Software Foundation, Inc.,
 
 #include "id_sd.h"
 #include "3d_def.h"
+#ifndef BS32X
 #include "bstone_audio_mixer.h"
+#endif
 #include "bstone_memory_binary_reader.h"
 
 extern uint16_t sdStartPCSounds;
@@ -68,7 +70,11 @@ extern int16_t DigiMap[];
 bool sd_has_audio = false;
 bool sd_is_sound_enabled = false;
 bool sd_is_music_enabled = false;
+#ifdef BS32X
+volatile uint32_t TimeCount;
+#else
 std::atomic<uint32_t> TimeCount;
+#endif
 
 uint8_t** SoundTable;
 
@@ -88,7 +94,33 @@ bool sqPlayedOnce;
 
 // BBi
 static int music_index = -1;
+#ifdef BS32X
+// BlakeStone32X: the mixer is the platform layer (PWM on the 32X)
+class Bs32xMixer {
+public:
+    bool initialize(int, int) { return true; }
+    void uninitialize() {}
+    bool is_any_sfx_playing() const { return bs32x_snd_is_playing(); }
+    bool is_player_channel_playing(bstone::ActorChannel channel) const
+        { return bs32x_snd_is_channel_playing(static_cast<int>(channel)); }
+    bool play_adlib_music(int index, const void* data, int size)
+        { return bs32x_snd_play_music(index, data, size); }
+    bool play_adlib_sound(int, int, const void*, int, int, bstone::ActorType, bstone::ActorChannel)
+        { return false; }
+    bool play_pcm_sound(int index, int priority, const void* data, int size,
+        int actor_index, bstone::ActorType, bstone::ActorChannel channel)
+        { return bs32x_snd_play_pcm(index, priority, data, size, actor_index, static_cast<int>(channel)); }
+    void set_music_volume(int volume) { bs32x_snd_set_volume(1, volume); }
+    void set_sfx_volume(int volume) { bs32x_snd_set_volume(0, volume); }
+    void set_mute(bool value) { bs32x_snd_set_volume(2, value ? 1 : 0); }
+    bool stop_all_sfx() { bs32x_snd_stop_all(); return true; }
+    bool stop_music() { bs32x_snd_stop_music(); return true; }
+    bool update_positions() { return true; }
+};
+static Bs32xMixer mixer;
+#else
 static bstone::AudioMixer mixer;
+#endif
 
 int sd_sfx_volume = ::sd_default_sfx_volume;
 int sd_music_volume = ::sd_default_music_volume;
@@ -134,9 +166,14 @@ static bool SDL_DetectAdLib()
 {
     int sdl_result = 0;
 
+#ifdef BS32X
+    static_cast<void>(sdl_result);
+    return true;
+#else
     sdl_result = ::SDL_Init(SDL_INIT_AUDIO);
 
     return sdl_result == 0;
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////

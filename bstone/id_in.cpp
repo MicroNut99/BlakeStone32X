@@ -132,6 +132,7 @@ static Direction DirTable[] = // Quick lookup for total direction
 //      Internal routines
 
 // BBi
+#ifndef BS32X
 bool in_grab_mouse(
     bool grab)
 {
@@ -150,7 +151,9 @@ bool in_grab_mouse(
 
     return ::in_is_mouse_grabbed;
 }
+#endif
 
+#ifndef BS32X
 static ScanCode in_keyboard_map_to_bstone(
     SDL_Keycode key_code,
     SDL_Keymod key_mod)
@@ -502,7 +505,9 @@ static ScanCode in_keyboard_map_to_bstone(
         return ScanCode::sc_none;
     }
 }
+#endif
 
+#ifndef BS32X
 static char in_keyboard_map_to_char(
     const SDL_KeyboardEvent& e)
 {
@@ -682,7 +687,9 @@ static char in_keyboard_map_to_char(
 
     return '\0';
 }
+#endif
 
+#ifndef BS32X
 static void in_handle_keyboard(
     const SDL_KeyboardEvent& e)
 {
@@ -732,7 +739,9 @@ static void in_handle_keyboard(
         }
     }
 }
+#endif
 
+#ifndef BS32X
 static void in_handle_mouse_buttons(
     const SDL_MouseButtonEvent& e)
 {
@@ -779,10 +788,12 @@ static void in_handle_mouse_buttons(
         }
     }
 }
+#endif
 
 static int in_mouse_dx;
 static int in_mouse_dy;
 
+#ifndef BS32X
 static void in_handle_mouse_motion(
     const SDL_MouseMotionEvent& e)
 {
@@ -794,7 +805,9 @@ static void in_handle_mouse_motion(
         in_mouse_dy = 0;
     }
 }
+#endif
 
+#ifndef BS32X
 static void in_handle_mouse(
     const SDL_Event& e)
 {
@@ -809,6 +822,7 @@ static void in_handle_mouse(
         break;
     }
 }
+#endif
 // BBi
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1242,6 +1256,7 @@ void IN_ClearKeysDown()
 }
 
 // BBi
+#ifndef BS32X
 static void in_handle_window(
     const SDL_WindowEvent& e)
 {
@@ -1278,7 +1293,9 @@ static void in_handle_window(
         Keyboard[ScanCode::sc_mouse_x2] = false;
     }
 }
+#endif
 
+#ifndef BS32X
 void in_handle_events()
 {
     SDL_Event e;
@@ -1304,6 +1321,7 @@ void in_handle_events()
         }
     }
 }
+#endif
 // BBi
 
 //
@@ -2012,3 +2030,38 @@ void in_reset_binding_state(
     }
 }
 // BBi
+
+
+#ifdef BS32X
+// BlakeStone32X: input comes from the platform layer (pad mapped to keys)
+bool in_grab_mouse(
+    bool grab)
+{
+    static_cast<void>(grab);
+    ::in_is_mouse_grabbed = false;
+    return false;
+}
+
+void bs32x_in_key(
+    int scan_code,
+    bool is_pressed,
+    char ascii)
+{
+    ScanCode key = static_cast<ScanCode>(scan_code);
+
+    Keyboard[key] = is_pressed;
+
+    if (is_pressed) {
+        LastScan = key;
+
+        if (ascii != '\0') {
+            LastASCII = ascii;
+        }
+    }
+}
+
+void in_handle_events()
+{
+    bs32x_in_update();
+}
+#endif // BS32X

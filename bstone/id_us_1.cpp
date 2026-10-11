@@ -51,7 +51,9 @@ Free Software Foundation, Inc.,
 //
 
 
+#ifndef BS32X
 #include <thread>
+#endif
 #include "id_heads.h"
 
 
@@ -96,6 +98,7 @@ SaveGame Games[MaxSaveGames];
 namespace {
 
 
+#ifndef BS32X
 std::thread sys_timer_thread;
 std::atomic_bool sys_timer_quit;
 
@@ -109,6 +112,7 @@ void sys_timer_callback()
         std::this_thread::sleep_for(delay);
     }
 }
+#endif
 
 
 } // namespace
@@ -128,11 +132,13 @@ void US_Shutdown()
     }
 
     // BBi
+#ifndef BS32X
     sys_timer_quit = true;
 
     if (sys_timer_thread.joinable()) {
         sys_timer_thread.join();
     }
+#endif
     // BBi
 
     ::US_Started = false;
@@ -658,8 +664,10 @@ void US_Startup()
     }
 
     // BBi
+#ifndef BS32X
     sys_timer_quit = false;
     sys_timer_thread = std::thread(sys_timer_callback);
+#endif
     // BBi
 
     ::US_InitRndT(true); // Initialize the random number generator

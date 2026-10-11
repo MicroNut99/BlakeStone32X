@@ -4393,7 +4393,7 @@ inline void serialize_field_internal(
     checksum.update(value);
 
     if (!writer.write(bstone::Endian::le(value))) {
-        throw ArchiveException("serialize_field");
+        bs32x_archive_fail("serialize_field");
     }
 }
 
@@ -4409,7 +4409,7 @@ inline void serialize_field_internal(
     checksum.update(target_value);
 
     if (!writer.write(target_value)) {
-        throw ArchiveException("serialize_field");
+        bs32x_archive_fail("serialize_field");
     }
 }
 
@@ -4482,7 +4482,7 @@ inline void deserialize_field_internal(
     ArchiveRemapNoneTag)
 {
     if (!reader.read(value)) {
-        throw ArchiveException("deserialize_field");
+        bs32x_archive_fail("deserialize_field");
     }
 
     bstone::Endian::lei(value);
@@ -4504,7 +4504,7 @@ inline void deserialize_field_internal(
     ValueX8Type source_value = 0;
 
     if (!reader.read(source_value)) {
-        throw ArchiveException("deserialize_field");
+        bs32x_archive_fail("deserialize_field");
     }
 
     checksum.update(source_value);
@@ -4522,7 +4522,7 @@ inline void deserialize_field_internal<bool>(
     uint8_t source_value = 0;
 
     if (!reader.read(source_value)) {
-        throw ArchiveException("deserialize_field");
+        bs32x_archive_fail("deserialize_field");
     }
 
     checksum.update(source_value);

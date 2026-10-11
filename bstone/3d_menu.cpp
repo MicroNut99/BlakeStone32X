@@ -324,7 +324,7 @@ static const std::string& get_saved_game_base_name()
             break;
 
         default:
-            throw std::runtime_error("Invalid game type.");
+            ::Quit("Invalid game type.");
         }
 
         base_name += "_saved_game_";

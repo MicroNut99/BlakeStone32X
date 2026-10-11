@@ -124,7 +124,7 @@ void Log::write_internal(
         break;
 
     default:
-        throw std::runtime_error("Invalid message type.");
+        ::Quit("Invalid message type.");
     }
 
     if (args_.empty()) {

@@ -6033,7 +6033,7 @@ static const std::string& get_score_file_name()
             break;
 
         default:
-            throw std::runtime_error("Invalid game type.");
+            ::Quit("Invalid game type.");
         }
 
         file_name = "bstone_" + game_type_string + "_high_scores";
@@ -6071,7 +6071,7 @@ void read_high_scores()
         bstone::Crc32 check_sum;
         bstone::BinaryReader reader(&stream);
 
-        try {
+        { bs32x_archive_error = false;
             for (auto& score : scores) {
                 ::deserialize_field(score.name, reader, check_sum);
                 ::deserialize_field(score.score, reader, check_sum);
@@ -6079,7 +6079,7 @@ void read_high_scores()
                 ::deserialize_field(score.episode, reader, check_sum);
                 ::deserialize_field(score.ratio, reader, check_sum);
             }
-        } catch (const ArchiveException&) {
+        } if (bs32x_archive_error) {
             is_succeed = false;
         }
 
@@ -6194,7 +6194,7 @@ void ReadConfig()
         bstone::Crc32 checksum;
         bstone::BinaryReader reader(&stream);
 
-        try {
+        { bs32x_archive_error = false;
             ::deserialize_field(is_sound_enabled, reader, checksum);
             ::deserialize_field(is_music_enabled, reader, checksum);
 
@@ -6234,7 +6234,7 @@ void ReadConfig()
             // AOG options
             ::deserialize_field(g_heart_beat_sound, reader, checksum);
             ::deserialize_field(g_rotated_automap, reader, checksum);
-        } catch (const ArchiveException&) {
+        } if (bs32x_archive_error) {
             is_succeed = false;
         }
 
@@ -6574,9 +6574,7 @@ bool LoadLevel(
     shade_max = sm_table[mod];
     normalshade = (3 * (maxscale >> 2)) / normalshade_div;
 
-    std::string chunk_name = "LV" + (
-        bstone::FormatString() << std::setw(2) << std::setfill('0') <<
-        std::hex << std::uppercase << level_index).to_string();
+    std::string chunk_name = "LV" + ::bs32x_hex2(level_index);
 
     g_playtemp.set_position(0);
 
@@ -6605,7 +6603,7 @@ bool LoadLevel(
 
     bstone::BinaryReader reader(&g_playtemp);
 
-    try {
+    { bs32x_archive_error = false;
         ::deserialize_field(tilemap, reader, checksum);
 
         for (int i = 0; i < MAPSIZE; ++i) {
@@ -6631,7 +6629,8 @@ bool LoadLevel(
         ::deserialize_field(actor_count, reader, checksum);
 
         if (actor_count < 1 || actor_count >= MAXACTORS) {
-            throw ArchiveException("actor_count");
+            bs32x_archive_fail("actor_count");
+            actor_count = 1;   /* BS32X: no exceptions, keep going safely */
         }
 
         ::InitActorList();
@@ -6718,7 +6717,7 @@ bool LoadLevel(
         }
 
         ::deserialize_field(gamestate.plasma_detonators, reader, checksum);
-    } catch (const ArchiveException&) {
+    } if (bs32x_archive_error) {
         is_succeed = false;
     }
 
@@ -6798,9 +6797,7 @@ bool SaveLevel(
 
     // Remove level chunk from file
     //
-    std::string chunk_name = "LV" + (
-        bstone::FormatString() << std::setw(2) << std::setfill('0') <<
-        std::hex << std::uppercase << level_index).to_string();
+    std::string chunk_name = "LV" + ::bs32x_hex2(level_index);
 
     ::DeleteChunk(g_playtemp, chunk_name);
 
@@ -6970,7 +6967,7 @@ static const std::string& get_saved_game_version_string()
             break;
 
         default:
-            throw std::runtime_error("Invalid game type.");
+            ::Quit("Invalid game type.");
         }
 
         version_string +=
@@ -7128,7 +7125,7 @@ bool LoadTheGame(
     // Deserialize HEAD chunk
     //
     if (is_succeed) {
-        try {
+        { bs32x_archive_error = false;
             bstone::MemoryStream head_stream(
                 static_cast<int>(head_buffer.size()),
                 0,
@@ -7138,7 +7135,7 @@ bool LoadTheGame(
 
             gamestate.deserialize(head_reader, checksum);
             gamestuff.deserialize(head_reader, checksum);
-        } catch (const ArchiveException&) {
+        } if (bs32x_archive_error) {
             is_succeed = false;
 
             bstone::Log::write_error(
@@ -7256,11 +7253,11 @@ bool SaveTheGame(
     bstone::MemoryStream head_stream;
     bstone::BinaryWriter head_writer(&head_stream);
 
-    try {
+    { bs32x_archive_error = false;
         gamestate.serialize(head_writer, head_checksum);
         gamestuff.serialize(head_writer, head_checksum);
         head_writer.set_position(0);
-    } catch (const ArchiveException&) {
+    } if (bs32x_archive_error) {
         bstone::Log::write_error(
             "SAVE: Failed to serialize HEAD chunk.");
 
@@ -7358,11 +7355,7 @@ bool SaveTheGame(
 bool LevelInPlaytemp(
     int level_index)
 {
-    bstone::FormatString format;
-    format << "LV" << std::uppercase << std::hex <<
-        std::setfill('0') << std::setw(2) << level_index;
-
-    return ::FindChunk(&g_playtemp, format.to_string()) != 0;
+    return ::FindChunk(&g_playtemp, "LV" + ::bs32x_hex2(level_index)) != 0;
 }
 
 bool CheckDiskSpace(
@@ -8516,8 +8509,12 @@ bool is_ps()
 void sys_sleep_for(
     int milliseconds)
 {
+#ifdef BS32X
+    bs32x_sleep_ms(milliseconds);
+#else
     std::this_thread::sleep_for(
         std::chrono::milliseconds(milliseconds));
+#endif
 }
 
 void sys_default_sleep_for()

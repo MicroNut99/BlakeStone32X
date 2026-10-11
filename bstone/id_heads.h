@@ -29,6 +29,7 @@ Free Software Foundation, Inc.,
 #define IN_DEVELOPMENT (0)
 
 
+#include "bs32x.h"
 #include <cassert>
 #include <cctype>
 #include <cstdint>
@@ -38,7 +39,9 @@ Free Software Foundation, Inc.,
 
 #include <algorithm>
 #include <atomic>
+#ifndef BS32X
 #include <chrono>
+#endif
 #include <exception>
 #include <functional>
 #include <memory>
@@ -52,7 +55,9 @@ Free Software Foundation, Inc.,
 #include "bstone_crc32.h"
 #include "bstone_endian.h"
 #include "bstone_file_stream.h"
+#ifndef BS32X
 #include "bstone_format_string.h"
+#endif
 #include "bstone_log.h"
 #include "bstone_memory_binary_reader.h"
 #include "bstone_memory_stream.h"

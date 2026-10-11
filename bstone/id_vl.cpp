@@ -216,7 +216,7 @@ public:
         int index) const
     {
         if (!is_initialized()) {
-            throw std::runtime_error("Not initialized.");
+            ::Quit("Not initialized.");
         }
 
         return palette_[index];
@@ -282,19 +282,19 @@ public:
         int count)
     {
         if (!is_initialized()) {
-            throw std::runtime_error("Not initialized.");
+            ::Quit("Not initialized.");
         }
 
         if (offset < 0 || offset > 256) {
-            throw std::out_of_range("Invalid offset.");
+            ::Quit("Invalid offset.");
         }
 
         if (count < 0 || count > 256) {
-            throw std::out_of_range("Invalid count.");
+            ::Quit("Invalid count.");
         }
 
         if ((offset + count) > 256) {
-            throw std::out_of_range("Invalid offset or count.");
+            ::Quit("Invalid offset or count.");
         }
 
         int index_to = offset + count;
@@ -354,7 +354,7 @@ private:
             return 24;
 
         default:
-            throw std::invalid_argument("Invalid mask.");
+            ::Quit("Invalid mask.");
         }
     }
 }; // SdlPalette
@@ -579,7 +579,7 @@ void VL_SetPalette(
         break;
 
     default:
-        throw std::runtime_error("g_renderer_type");
+        ::Quit("g_renderer_type");
     }
 }
 
@@ -2022,7 +2022,7 @@ void initialize_video()
         break;
 
     default:
-        throw std::runtime_error("Invalid renderer type.");
+        ::Quit("Invalid renderer type.");
     }
 
     int sdl_result = 0;

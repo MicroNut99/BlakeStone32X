@@ -45,6 +45,31 @@ uint32_t* chunks_offsets = nullptr;
 } // namespace
 
 
+#ifdef BS32X
+// BlakeStone32X: the page file stays in cart ROM; only the offset table is copied to RAM
+static void open_page_file(
+    const std::string& file_name)
+{
+    const void* data = nullptr;
+    long size = 0;
+
+    if (!bs32x_file_open_read(file_name.c_str(), &data, &size)) {
+        ::Quit("Failed to open page file \"{}\".", file_name);
+    }
+
+    raw_data = static_cast<uint8_t*>(const_cast<void*>(data));
+
+    bstone::MemoryBinaryReader reader(raw_data, size);
+
+    ChunksInFile = bstone::Endian::le(reader.read_u16());
+    PMSpriteStart = bstone::Endian::le(reader.read_u16());
+    PMSoundStart = bstone::Endian::le(reader.read_u16());
+
+    chunks_offsets = new uint32_t[ChunksInFile + 1];
+    std::memcpy(chunks_offsets, &raw_data[6], 4 * (ChunksInFile + 1));
+    bstone::Endian::lei(chunks_offsets, ChunksInFile + 1);
+}
+#else
 static void open_page_file(
     const std::string& file_name)
 {
@@ -79,6 +104,8 @@ static void open_page_file(
     bstone::Endian::lei(chunks_offsets, ChunksInFile + 1);
 }
 
+#endif
+
 void PM_Startup()
 {
     ::PM_Shutdown();
@@ -93,10 +120,17 @@ void PM_Shutdown()
     PMSpriteStart = 0;
     PMSoundStart = 0;
 
+#ifdef BS32X
+    raw_data = nullptr;
+
+    delete [] chunks_offsets;
+    chunks_offsets = nullptr;
+#else
     delete [] raw_data;
     raw_data = nullptr;
 
     chunks_offsets = nullptr;
+#endif
 }
 
 void* PM_GetPage(

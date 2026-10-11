@@ -1,3 +1,50 @@
+#ifdef BS32X
+// BlakeStone32X: StringHelper without locale
+#include "bstone_string_helper.h"
+#include <cctype>
+
+namespace bstone {
+
+char StringHelper::to_lower(
+    char value)
+{
+    return static_cast<char>(std::tolower(static_cast<unsigned char>(value)));
+}
+
+std::string StringHelper::to_lower(
+    const std::string& value)
+{
+    std::string result(value);
+    for (auto& ch : result) {
+        ch = to_lower(ch);
+    }
+    return result;
+}
+
+bool StringHelper::is_iequal(
+    const std::string& a,
+    const std::string& b)
+{
+    if (a.size() != b.size()) {
+        return false;
+    }
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (to_lower(a[i]) != to_lower(b[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+const std::string& StringHelper::get_empty()
+{
+    static const std::string empty;
+    return empty;
+}
+
+} // bstone
+
+#else // BS32X
 /*
 BStone: A Source port of
 Blake Stone: Aliens of Gold and Blake Stone: Planet Strike
@@ -126,3 +173,5 @@ const std::string& StringHelper::get_empty()
 
 
 } // bstone
+
+#endif // BS32X

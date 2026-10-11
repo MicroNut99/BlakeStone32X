@@ -3542,20 +3542,18 @@ void LoadOverheadChunk(
     //
     ::g_playtemp.set_position(0);
 
-    std::string chunk_name = "OV" + (
-        bstone::FormatString() << std::setw(2) << std::setfill('0') <<
-        std::hex << std::uppercase << tpNum).to_string();
+    std::string chunk_name = "OV" + ::bs32x_hex2(tpNum);
 
     bool is_succeed = true;
     bstone::Crc32 checksum;
     bstone::BinaryReader reader(&g_playtemp);
 
     if (::FindChunk(&g_playtemp, chunk_name) > 0) {
-        try {
+        { bs32x_archive_error = false;
             ::deserialize_field(
                 reinterpret_cast<uint8_t(&)[4096]>(ov_buffer[0]),
                 reader, checksum);
-        } catch (const ArchiveException&) {
+        } if (bs32x_archive_error) {
             is_succeed = false;
         }
 
@@ -3589,9 +3587,7 @@ void SaveOverheadChunk(
 {
     // Remove level chunk from file
     //
-    std::string chunk_name = "OV" + (
-        bstone::FormatString() << std::setw(2) << std::setfill('0') <<
-        std::hex << std::uppercase << tpNum).to_string();
+    std::string chunk_name = "OV" + ::bs32x_hex2(tpNum);
 
     ::DeleteChunk(g_playtemp, chunk_name);
 

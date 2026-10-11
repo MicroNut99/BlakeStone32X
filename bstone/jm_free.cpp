@@ -598,7 +598,7 @@ void CheckForEpisodes()
         break;
 
     default:
-        throw std::runtime_error("Invalid game type.");
+        ::Quit("Invalid game type.");
     }
 
     for (auto i = 0; i < mv_NUM_MOVIES; ++i) {

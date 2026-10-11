@@ -22,6 +22,7 @@ Free Software Foundation, Inc.,
 */
 
 
+#include "bs32x.h"
 #include "bstone_crc32.h"
 #include <stdexcept>
 
@@ -64,11 +65,11 @@ void Crc32::update(
     int size)
 {
     if (!data) {
-        throw std::invalid_argument("Null data.");
+        bs32x_fatal("Null data.");
     }
 
     if (size < 0) {
-        throw std::invalid_argument("Negative size.");
+        bs32x_fatal("Negative size.");
     }
 
     if (size == 0) {

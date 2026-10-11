@@ -30,6 +30,37 @@ Free Software Foundation, Inc.,
 #ifndef BSTONE_LOG_INCLUDED
 #define BSTONE_LOG_INCLUDED
 
+#ifdef BS32X
+// BlakeStone32X: log messages go to the platform layer (format string only)
+#include <string>
+
+void bs32x_log(const char* message);
+
+namespace bstone {
+
+class Log {
+public:
+    static void write() {}
+    static void write_version() {}
+
+    template<typename... TArgs>
+    static void write(const std::string& format, TArgs...) { ::bs32x_log(format.c_str()); }
+
+    template<typename... TArgs>
+    static void write_warning(const std::string& format, TArgs...) { ::bs32x_log(format.c_str()); }
+
+    template<typename... TArgs>
+    static void write_error(const std::string& format, TArgs...) { ::bs32x_log(format.c_str()); }
+
+    template<typename... TArgs>
+    static void write_critical(const std::string& format, TArgs...) { ::bs32x_log(format.c_str()); }
+}; // Log
+
+} // bstone
+
+#else // BS32X
+
+
 
 #include <sstream>
 #include <string>
@@ -175,4 +206,5 @@ namespace bstone {
 } // bstone
 
 
+#endif // BS32X
 #endif // BSTONE_LOG_INCLUDED
