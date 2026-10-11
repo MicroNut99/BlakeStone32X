@@ -333,14 +333,14 @@ void RAMCODE R_Render(const view_t *v, int x0, int x1, rwork_t *w)
 			perp = sdx - ddx;
 			if (perp < 0x800) perp = 0x800;
 			wx = py + FMUL(perp, rdy);
-			tx = (wx >> 10) & 63;
+			tx = ((uint32_t)wx >> 10) & 63;   /* unsigned: no SH2 shift helper */
 			if (rdx < 0) tx = 63 - tx;
 			pic = (t - 1) * 2 + 1;
 		} else {
 			perp = sdy - ddy;
 			if (perp < 0x800) perp = 0x800;
 			wx = px + FMUL(perp, rdx);
-			tx = (wx >> 10) & 63;
+			tx = ((uint32_t)wx >> 10) & 63;   /* unsigned: no SH2 shift helper */
 			if (rdy > 0) tx = 63 - tx;
 			pic = (t - 1) * 2;
 		}

@@ -7,7 +7,7 @@
 #include "marshw.h"
 #include "render.h"
 
-#define VERSION   "B4"
+#define VERSION   "B5"
 #define BLOB_ADDR 0x02040000      /* ROM offset 0x40000, set by the build */
 #define FBW       320
 #define VIEWTOP   8
@@ -37,21 +37,30 @@ static uint8_t white, black;
 
 static void put_text(uint8_t *fb, int x, int y, const char *s)
 {
+	/* the SH2 has no variable shift (gcc calls a helper per shift), so use
+	   constant shifts and a 4-entry table of 2-pixel words */
+	uint16_t pair[4];
+	pair[0] = (uint16_t)(black * 0x0101);
+	pair[1] = (uint16_t)((black << 8) | white);
+	pair[2] = (uint16_t)((white << 8) | black);
+	pair[3] = (uint16_t)(white * 0x0101);
 	for (; *s; s++, x += 8) {
-		int c = (unsigned char)*s, r, i;
+		int c = (unsigned char)*s, r;
 		const uint8_t *g;
+		uint16_t *d;
 		if (c >= 'a' && c <= 'z') c -= 32;
 		if (c < 0x20 || c > 0x7F) c = '?';
 		g = font8x8 + (c - 0x20) * 8;
 		if (x > FBW - 8) return;
 		/* 16-bit writes: Fusion skips byte writes of colour 0 to the frame buffer */
+		d = (uint16_t *)(fb + y * FBW + x);
 		for (r = 0; r < 8; r++) {
-			uint16_t *d = (uint16_t *)(fb + (y + r) * FBW + x);
-			for (i = 0; i < 4; i++) {
-				unsigned hi = (g[r] & (0x80 >> (i * 2))) ? white : black;
-				unsigned lo = (g[r] & (0x40 >> (i * 2))) ? white : black;
-				d[i] = (uint16_t)((hi << 8) | lo);
-			}
+			unsigned gr = g[r];
+			d[0] = pair[(gr >> 6) & 3];
+			d[1] = pair[(gr >> 4) & 3];
+			d[2] = pair[(gr >> 2) & 3];
+			d[3] = pair[gr & 3];
+			d += FBW / 2;
 		}
 	}
 }
