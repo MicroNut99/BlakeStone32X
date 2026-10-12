@@ -12,6 +12,9 @@ void bs32x_level_remove(int key);
 bool bs32x_level_put(int key, const uint8_t* data, int size, uint8_t* work, int work_size);
 int bs32x_level_get(int key, uint8_t* dst, int cap);
 int bs32x_levels_used(void);
+int bs32x_level_keys(int* keys, int max);
+int bs32x_level_export(int key, uint8_t* dst, int cap, int* rsize);
+bool bs32x_level_import(int key, const uint8_t* data, int csize, int rsize);
 
 /* platform */
 uint8_t* bs32x_scratch_begin(void);     /* the page RAM as work space (screen kept elsewhere) */

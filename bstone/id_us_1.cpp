@@ -529,6 +529,28 @@ bool US_LineInput(
     LastASCII = key_None;
     LastScan = ScanCode::sc_none;
 
+#ifdef BS32X
+    // BlakeStone32X: typing with the pad. Up/down changes the last letter,
+    // right adds a letter, left (or B) takes one off, A or START is done;
+    // B with nothing typed backs out.
+    Bs32xInputMode input_mode(BS32X_IN_UI);
+    static const char pad_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .-!";
+    const int pad_count = static_cast<int>(sizeof(pad_chars)) - 1;
+    ScanCode held = ScanCode::sc_none;
+    uint32_t held_since = 0;
+    uint32_t last_repeat = 0;
+    while (Keyboard[ScanCode::sc_return] || Keyboard[ScanCode::sc_escape]) {
+        ::in_handle_events();
+    }
+    LastScan = ScanCode::sc_none;
+    LastASCII = key_None;
+    if (*s == '\0' && maxchars != 1) {
+        s[0] = 'A';
+        s[1] = '\0';
+        cursor = 1;
+    }
+#endif
+
     while (!done) {
         if (cursorvis) {
             if (use_custom_cursor) { // JAM
@@ -544,6 +566,72 @@ bool US_LineInput(
         LastScan = ScanCode::sc_none;
         c = LastASCII;
         LastASCII = key_None;
+
+#ifdef BS32X
+        {
+            c = key_None;
+            // up/down repeat while held
+            ScanCode now = Keyboard[ScanCode::sc_up_arrow] ? ScanCode::sc_up_arrow :
+                (Keyboard[ScanCode::sc_down_arrow] ? ScanCode::sc_down_arrow : ScanCode::sc_none);
+            if (now != held) {
+                held = now;
+                held_since = TimeCount;
+                last_repeat = TimeCount;
+            } else if (now != ScanCode::sc_none && sc == ScanCode::sc_none &&
+                TimeCount - held_since > 24 && TimeCount - last_repeat > 5)
+            {
+                last_repeat = TimeCount;
+                sc = now;
+            }
+
+            int len = static_cast<int>(strlen(s));
+            switch (sc) {
+            case ScanCode::sc_up_arrow:
+            case ScanCode::sc_down_arrow:
+                if (len > 0) {
+                    const char* at = strchr(pad_chars, s[len - 1]);
+                    int k = at ? static_cast<int>(at - pad_chars) : 0;
+                    k = (k + (sc == ScanCode::sc_up_arrow ? 1 : pad_count - 1)) % pad_count;
+                    s[len - 1] = pad_chars[k];
+                    redraw = true;
+                    cursormoved = true;
+                }
+                sc = ScanCode::sc_none;
+                break;
+            case ScanCode::sc_right_arrow:
+                USL_MeasureString(s, &w, &h);
+                if (len < MaxString - 1 && (!maxchars || len < maxchars) && (!maxwidth || w < maxwidth)) {
+                    s[len] = len > 0 ? s[len - 1] : 'A';
+                    s[len + 1] = '\0';
+                    cursor = len + 1;
+                    redraw = true;
+                    cursormoved = true;
+                }
+                sc = ScanCode::sc_none;
+                break;
+            case ScanCode::sc_left_arrow:
+                sc = ScanCode::sc_backspace;
+                break;
+            case ScanCode::sc_escape:
+                if (len > 0) {
+                    sc = ScanCode::sc_backspace;
+                }
+                break;
+            case ScanCode::sc_return:
+                // no trailing spaces
+                while (len > 0 && s[len - 1] == ' ') {
+                    s[--len] = '\0';
+                }
+                cursor = len;
+                break;
+            default:
+                break;
+            }
+            if (sc == ScanCode::sc_backspace) {
+                cursor = len;
+            }
+        }
+#endif
 
         switch (sc) {
         case ScanCode::sc_return:

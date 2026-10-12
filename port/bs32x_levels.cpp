@@ -19,11 +19,13 @@ struct Entry {
     int offset;         /* in the bank's store */
     int csize;          /* packed size (rounded up to 4) */
     int rsize;          /* unpacked size */
+    unsigned seq;       /* when it was put (newest highest) */
 };
 
 const int max_entries = 24;
 Entry entries[max_entries];
 int used[2];
+unsigned next_seq = 1;
 bool initialized = false;
 
 void init()
@@ -267,6 +269,80 @@ bool bs32x_level_put(int key, const uint8_t* data, int size, uint8_t* work, int 
     e->offset = used[bank];
     e->csize = csize;
     e->rsize = size;
+    e->seq = next_seq++;
+    used[bank] += csize;
+    return true;
+}
+
+/* for a saved mission: the keys, the current floor (0xFF) first, then the
+   most recently left */
+int bs32x_level_keys(int* keys, int max)
+{
+    init();
+    int n = 0;
+    if (find(0xFF) && n < max) {
+        keys[n++] = 0xFF;
+    }
+    unsigned below = ~0u;
+    for (;;) {
+        Entry* best = nullptr;
+        for (auto& e : entries) {
+            if (e.key >= 0 && e.key != 0xFF && e.seq < below && (!best || e.seq > best->seq)) {
+                best = &e;
+            }
+        }
+        if (!best || n >= max) {
+            return n;
+        }
+        keys[n++] = best->key;
+        below = best->seq;
+    }
+}
+
+/* the packed state (dst 4-byte aligned); returns its size or -1 */
+int bs32x_level_export(int key, uint8_t* dst, int cap, int* rsize)
+{
+    init();
+    Entry* e = find(key);
+    if (!e || e->csize > cap) {
+        return -1;
+    }
+    int size = 0;
+    const uint8_t* store = bs32x_bank_access(e->bank, &size);
+    copy32(dst, store + e->offset, e->csize);
+    *rsize = e->rsize;
+    return e->csize;
+}
+
+/* a packed state back into the store (data 4-byte aligned, csize a multiple of 4) */
+bool bs32x_level_import(int key, const uint8_t* data, int csize, int rsize)
+{
+    init();
+    bs32x_level_remove(key);
+    Entry* e = find(-1);
+    if (!e || csize <= 0 || (csize & 3) != 0) {
+        return false;
+    }
+    int bank = -1;
+    for (int b = 0; b < 2; ++b) {
+        int cap = 0;
+        bs32x_bank_size(b, &cap);
+        if (cap - used[b] >= csize && (bank < 0 || used[b] < used[bank])) {
+            bank = b;
+        }
+    }
+    if (bank < 0) {
+        return false;
+    }
+    int cap = 0;
+    uint8_t* store = bs32x_bank_access(bank, &cap);
+    copy32(store + used[bank], data, csize);
+    e->key = key;
+    e->bank = bank;
+    e->offset = used[bank];
+    e->csize = csize;
+    e->rsize = rsize;
+    e->seq = next_seq++;
     used[bank] += csize;
     return true;
 }

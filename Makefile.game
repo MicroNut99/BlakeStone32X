@@ -3,8 +3,8 @@
 # Needs a PC C++ compiler too: the PC test build makes LATCHES.BS6 and GREXP.BS6.
 ROOTDIR  ?= $(GENDEV)
 GAMEDIR  ?= ../BLAKE
-NAME     ?= BlakeStone32X_B11
-TITLE    ?= BLAKE STONE 32X B11
+NAME     ?= BlakeStone32X_B12
+TITLE    ?= BLAKE STONE 32X B12
 
 PREFIX = $(ROOTDIR)/sh-elf/bin/sh-elf-
 CC = $(PREFIX)gcc
@@ -29,7 +29,7 @@ GAME = 3d_act1 3d_act2 3d_agent 3d_debug 3d_draw 3d_draw2 3d_game 3d_inter 3d_ma
        bstone_crc32 bstone_istream bstone_memory_binary_reader bstone_memory_stream \
        bstone_string_helper
 OBJS = $(B)/crt0.o $(B)/mars_main.o $(B)/marshw.o $(B)/sh2_fixed.o $(B)/font.o $(B)/mars_text.o \
-       $(B)/lz4d.o $(B)/cxxrt.o $(B)/r_asm.o $(B)/bs32x_sound.o $(B)/bs32x_levels.o $(B)/bs32x_render.o $(B)/vl_port.o $(B)/file_stream_port.o $(B)/mars_platform.o \
+       $(B)/lz4d.o $(B)/cxxrt.o $(B)/r_asm.o $(B)/bs32x_sound.o $(B)/bs32x_levels.o $(B)/bs32x_sram.o $(B)/bs32x_render.o $(B)/vl_port.o $(B)/file_stream_port.o $(B)/mars_platform.o \
        $(addprefix $(B)/,$(addsuffix .o,$(GAME)))
 
 # MUSIC.BS6 first: the Genesis side reads each song from one 1 MB ROM bank

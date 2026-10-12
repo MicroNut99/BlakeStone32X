@@ -2,21 +2,27 @@
 
 Blake Stone: Aliens of Gold for the Sega 32X. Work in progress.
 
-## B1 - speed test
+## B12
 
-Level 1 (Game1_Floor1) with walls, textured floors and ceilings, and Blake's distance shading.
-Both SH2s render: the master does the left half, the slave does the right half.
-Doors are open and there are no sprites yet. This build only measures speed.
+The full game: all 6 missions, sound effects (digitized and AdLib), music, menus.
 
-| Button | Action |
-|---|---|
-| D-pad | walk / turn |
-| A | floors and ceilings on / off |
-| B | view size 320x160, 288x144, 256x128, 224x112, 192x96 |
-| C | detail hi / lo (lo = double-wide pixels) |
-| START | 2 CPUs / 1 CPU |
+| Button | Playing | Menus |
+|---|---|---|
+| D-pad | walk / turn | move |
+| A | fire | choose |
+| B | use (doors, switches) | back |
+| C | strafe | choose |
+| X | run | |
+| Y | next weapon | |
+| Z / MODE | auto-map | back |
+| START | menu | choose |
 
-Each boot step is shown as a line on screen with its values. If a step fails, it shows `STOP` and the reason.
+- **Save RAM (32 KB):** options, controls, high scores and one saved mission.
+  A saved mission keeps the current floor and the floors you left last (up to about 20 KB);
+  other floors start over when you go back to them.
+- **LEVEL SELECT** (main menu): mission, floor 1-10, lives, then difficulty.
+- **GAME OPTIONS > STARTING LIVES:** 1 to 10 lives for every new mission.
+- High score names: up/down picks a letter, right adds one, left or B takes one off, A is done.
 
 ## Build
 

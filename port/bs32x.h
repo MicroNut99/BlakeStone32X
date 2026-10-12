@@ -46,6 +46,20 @@ struct Bs32xInputMode {                               /* sets a pad meaning for 
 bool bs32x_file_open_read(const char *name, const void **data, long *size);
 void bs32x_file_save(const char *name, const void *data, long size);
 void bs32x_log(const char *message);
+/* battery save RAM (bs32x_sram.cpp); raw access is the platform's */
+void bs32x_sram_raw_read(int offset, void *buf, int len);
+void bs32x_sram_raw_write(int offset, const void *data, int len);
+enum { BS32X_SRAM_CONFIG = 0, BS32X_SRAM_SCORES = 1, BS32X_SRAM_SETTINGS = 2, BS32X_SRAM_SAVE = 3 };
+int bs32x_sram_capacity(int region);
+int bs32x_sram_read(int region, void *buf, int cap);     /* size, or -1: empty/bad */
+int bs32x_sram_peek(int region, void *buf, int len);     /* first bytes unchecked; size or -1 */
+bool bs32x_sram_write(int region, const void *data, int size);
+void bs32x_sram_erase(int region);
+/* BlakeStone32X menu settings (3d_menu.cpp) */
+extern int bs32x_start_floor;                         /* 0: the normal start */
+extern int bs32x_start_lives;
+void bs32x_settings_load(void);
+void bs32x_settings_save(void);
 bool bs32x_is_rom(const void *p);                    /* data in cart ROM (never freed) */
 extern "C" int bs32x_lz4_decode(const unsigned char *src, int src_len, unsigned char *dst, int dst_len);
 /* sound: digitized PCM (8-bit unsigned, ~7 kHz) and music */

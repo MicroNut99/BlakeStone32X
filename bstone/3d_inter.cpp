@@ -258,6 +258,9 @@ void CheckHighScore(
     }
 
     strcpy(myscore.name, "");
+#ifdef BS32X_SCORETEST
+    score = 99999;
+#endif
     myscore.score = score;
     myscore.episode = gamestate.episode;
     myscore.completed = other;
@@ -295,6 +298,10 @@ void CheckHighScore(
         allcaps = true;
         US_CustomCursor = TermCursor;
         US_LineInput(PrintX, PrintY, Scores[n].name, nullptr, true, MaxHighName, 100);
+#ifdef BS32X
+        void bs32x_write_high_scores();
+        bs32x_write_high_scores();   // BlakeStone32X: into the save RAM now
+#endif
     } else {
         IN_ClearKeysDown();
         IN_UserInput(500);

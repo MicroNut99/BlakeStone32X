@@ -6104,6 +6104,15 @@ void read_high_scores()
     }
 }
 
+static void write_high_scores();
+
+#ifdef BS32X
+void bs32x_write_high_scores()
+{
+    ::write_high_scores();
+}
+#endif
+
 static void write_high_scores()
 {
     if (::g_game_type == GameType::none) {
@@ -6466,6 +6475,19 @@ void NewGame(
         }
     }
 
+#ifdef BS32X
+    // BlakeStone32X: starting lives (GAME OPTIONS) and floor (LEVEL SELECT)
+    gamestate.lives = bs32x_start_lives;
+    if (bs32x_start_floor >= 1 && bs32x_start_floor <= 10 && !::is_ps()) {
+        gamestate.mapon = static_cast<int16_t>(bs32x_start_floor);
+        gamestate.key_floor = static_cast<int8_t>(gamestate.mapon + 1);
+        for (loop = 1; loop <= static_cast<uint16_t>(bs32x_start_floor); ++loop) {
+            gamestuff.old_levelinfo[loop].locked = false;
+        }
+    }
+    bs32x_start_floor = 0;
+#endif
+
     ExtraRadarFlags = InstantWin = InstantQuit = 0;
 
     pickquick = 0;
@@ -6623,6 +6645,9 @@ bool LoadLevel(
     if (level_size < 0) {
         level_size = 0;
         is_succeed = false;
+    }
+    if (level_index == 0xFF) {
+        bs32x_level_remove(0xFF);   // a loaded mission's floor: no longer needed
     }
     bstone::MemoryStream level_stream(level_size, 0, scratch);
     bstone::BinaryReader reader(&level_stream);
@@ -7109,11 +7134,177 @@ static bool LoadCompressedChunk(
     return true;
 }
 
+#ifdef BS32X
+// BlakeStone32X: one saved mission in the cart's save RAM (bs32x_sram.cpp):
+//   "BSV1", description (32), u32 head size, head (gamestate, gamestuff),
+//   u32 floor count, then per floor u32 key, u32 unpacked size,
+//   u32 packed size, the packed state (as in the frame buffer store).
+// The current floor goes first, then the floors left most recently, as many
+// as fit (up to about 20 KB); a floor that did not fit starts over when you
+// go back to it.
+namespace {
+
+const int bs32x_save_desc = 32;
+const int bs32x_save_head_at = 4 + bs32x_save_desc + 4;
+
+inline void bs32x_put32(uint8_t* p, uint32_t v)
+{
+    *reinterpret_cast<uint32_t*>(p) = v;
+}
+
+inline uint32_t bs32x_get32(const uint8_t* p)
+{
+    return *reinterpret_cast<const uint32_t*>(p);
+}
+
+bool bs32x_save_mission(const std::string& description)
+{
+    static_cast<void>(::SaveLevel(0xFF));
+
+    bool is_succeed = true;
+    uint8_t* scratch = bs32x_scratch_begin();
+    const int cap = bs32x_sram_capacity(BS32X_SRAM_SAVE);
+
+    std::memcpy(scratch, "BSV1", 4);
+    std::memset(scratch + 4, 0, bs32x_save_desc);
+    std::strncpy(reinterpret_cast<char*>(scratch + 4), description.c_str(), bs32x_save_desc - 1);
+
+    bstone::MemoryStream head_stream(
+        cap - bs32x_save_head_at, 0, scratch + bs32x_save_head_at,
+        bstone::StreamOpenMode::read_write);
+    bstone::BinaryWriter head_writer(&head_stream);
+    bstone::Crc32 head_checksum;
+
+    { bs32x_archive_error = false;
+        gamestate.serialize(head_writer, head_checksum);
+        gamestuff.serialize(head_writer, head_checksum);
+    } if (bs32x_archive_error) {
+        is_succeed = false;
+    }
+
+    int head_size = static_cast<int>(head_stream.get_position());
+    bs32x_put32(scratch + 4 + bs32x_save_desc, static_cast<uint32_t>(head_size));
+    int at = (bs32x_save_head_at + head_size + 3) & ~3;
+    int count_at = at;
+    at += 4;
+
+    int keys[32];
+    int key_count = bs32x_level_keys(keys, 32);
+    int stored = 0;
+    for (int i = 0; i < key_count && is_succeed; ++i) {
+        // the save RAM is written a byte at a time (slow): other floors only
+        // up to about 20 KB in all
+        int room = (keys[i] == 0xFF ? cap : std::min(cap, 20 * 1024)) - at - 12;
+        int rsize = 0;
+        int csize = bs32x_level_export(keys[i], scratch + at + 12, room, &rsize);
+        if (csize < 0) {
+            if (keys[i] == 0xFF) {
+                is_succeed = false;     // the current floor must be there
+            }
+            continue;
+        }
+        bs32x_put32(scratch + at, static_cast<uint32_t>(keys[i]));
+        bs32x_put32(scratch + at + 4, static_cast<uint32_t>(rsize));
+        bs32x_put32(scratch + at + 8, static_cast<uint32_t>(csize));
+        at += 12 + csize;
+        ++stored;
+    }
+    bs32x_put32(scratch + count_at, static_cast<uint32_t>(stored));
+
+    if (is_succeed) {
+        is_succeed = bs32x_sram_write(BS32X_SRAM_SAVE, scratch, at);
+    }
+
+    bs32x_scratch_end();
+    bs32x_level_remove(0xFF);
+    return is_succeed;
+}
+
+bool bs32x_load_mission()
+{
+    bool is_succeed = true;
+    uint8_t* scratch = bs32x_scratch_begin();
+    int size = bs32x_sram_read(BS32X_SRAM_SAVE, scratch, bs32x_scratch_size);
+
+    if (size < bs32x_save_head_at + 4 || std::memcmp(scratch, "BSV1", 4) != 0) {
+        is_succeed = false;
+    }
+
+    int head_size = is_succeed ? static_cast<int>(bs32x_get32(scratch + 4 + bs32x_save_desc)) : 0;
+    if (is_succeed && (head_size <= 0 || bs32x_save_head_at + head_size + 4 > size)) {
+        is_succeed = false;
+    }
+
+    if (is_succeed) {
+        bstone::MemoryStream head_stream(head_size, 0, scratch + bs32x_save_head_at);
+        bstone::BinaryReader head_reader(&head_stream);
+        bstone::Crc32 checksum;
+
+        { bs32x_archive_error = false;
+            gamestate.deserialize(head_reader, checksum);
+            gamestuff.deserialize(head_reader, checksum);
+        } if (bs32x_archive_error) {
+            is_succeed = false;
+        }
+    }
+
+    if (is_succeed) {
+        bs32x_levels_clear();
+        int at = (bs32x_save_head_at + head_size + 3) & ~3;
+        int count = static_cast<int>(bs32x_get32(scratch + at));
+        at += 4;
+        for (int i = 0; i < count && is_succeed; ++i) {
+            if (at + 12 > size) {
+                is_succeed = false;
+                break;
+            }
+            int key = static_cast<int>(bs32x_get32(scratch + at));
+            int rsize = static_cast<int>(bs32x_get32(scratch + at + 4));
+            int csize = static_cast<int>(bs32x_get32(scratch + at + 8));
+            if (csize <= 0 || at + 12 + csize > size ||
+                !bs32x_level_import(key, scratch + at + 12, csize, rsize))
+            {
+                is_succeed = false;
+                break;
+            }
+            at += 12 + csize;
+        }
+        if (!bs32x_level_has(0xFF)) {
+            is_succeed = false;
+        }
+    }
+
+    bs32x_scratch_end();
+    return is_succeed;
+}
+
+} // namespace
+
+// the description of the saved mission, or false when there is none
+bool bs32x_saved_mission_desc(char* desc, int len)
+{
+    uint8_t head[4 + bs32x_save_desc];
+    if (bs32x_sram_peek(BS32X_SRAM_SAVE, head, sizeof(head)) < static_cast<int>(sizeof(head)) ||
+        std::memcmp(head, "BSV1", 4) != 0)
+    {
+        return false;
+    }
+    int n = len - 1 < bs32x_save_desc - 1 ? len - 1 : bs32x_save_desc - 1;
+    std::memcpy(desc, head + 4, n);
+    desc[n] = '\0';
+    return true;
+}
+#endif
+
 bool LoadTheGame(
     const std::string& file_name)
 {
     bool is_succeed = true;
 
+#ifdef BS32X
+    static_cast<void>(file_name);
+    is_succeed = bs32x_load_mission();
+#else
     bstone::FileStream file_stream(file_name);
 
     if (!file_stream.is_open()) {
@@ -7227,6 +7418,7 @@ bool LoadTheGame(
             }
         }
     }
+#endif
 
 
     // Finish loading
@@ -7293,6 +7485,13 @@ bool SaveTheGame(
     const std::string& file_name,
     const std::string& description)
 {
+#ifdef BS32X
+    static_cast<void>(file_name);
+    bool is_saved = bs32x_save_mission(description);
+    ::NewViewSize();
+    return is_saved;
+#endif
+
     bstone::FileStream file_stream(
         file_name,
         bstone::StreamOpenMode::write);

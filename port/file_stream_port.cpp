@@ -25,6 +25,35 @@ Bs32xFile* ctx(void* context)
     return static_cast<Bs32xFile*>(context);
 }
 
+/* config and high scores live in the cart's save RAM */
+int sram_region(const std::string& name)
+{
+    if (name.find("bstone_config") != std::string::npos) {
+        return BS32X_SRAM_CONFIG;
+    }
+    if (name.find("_high_scores") != std::string::npos) {
+        return BS32X_SRAM_SCORES;
+    }
+    return -1;
+}
+
+uint8_t sram_buf[0x800];    /* the last one read (one is open at a time) */
+
+bool open_read(const std::string& name, const void** data, long* size)
+{
+    int region = sram_region(name);
+    if (region < 0) {
+        return bs32x_file_open_read(name.c_str(), data, size);
+    }
+    int n = bs32x_sram_read(region, sram_buf, static_cast<int>(sizeof(sram_buf)));
+    if (n < 0) {
+        return false;
+    }
+    *data = sram_buf;
+    *size = n;
+    return true;
+}
+
 } // namespace
 
 FileStream::FileStream() :
@@ -59,7 +88,7 @@ bool FileStream::open(
 
     const void* data = nullptr;
     long size = 0;
-    bool found = bs32x_file_open_read(file_name.c_str(), &data, &size);
+    bool found = open_read(file_name, &data, &size);
 
     if (open_mode == StreamOpenMode::read && !found) {
         return false;
@@ -95,7 +124,12 @@ void FileStream::close()
     auto f = ctx(context_);
 
     if (f->writable) {
-        bs32x_file_save(f->name.c_str(), f->wdata.data(), static_cast<long>(f->wdata.size()));
+        int region = sram_region(f->name);
+        if (region >= 0) {
+            bs32x_sram_write(region, f->wdata.data(), static_cast<int>(f->wdata.size()));
+        } else {
+            bs32x_file_save(f->name.c_str(), f->wdata.data(), static_cast<long>(f->wdata.size()));
+        }
     }
 
     delete f;
@@ -231,7 +265,7 @@ bool FileStream::is_exists(
 {
     const void* data = nullptr;
     long size = 0;
-    return bs32x_file_open_read(file_name.c_str(), &data, &size);
+    return open_read(file_name, &data, &size);
 }
 
 const uint8_t* FileStream::rom_data() const

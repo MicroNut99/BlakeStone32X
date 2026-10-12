@@ -436,6 +436,43 @@ void bs32x_file_save(const char* name, const void* data, long size)
     static_cast<void>(size);
 }
 
+/* save RAM: kept in BS32X_SRAM (a file) when that is set */
+static uint8_t host_sram[0x8000];
+static bool host_sram_loaded = false;
+
+static void host_sram_load()
+{
+    if (host_sram_loaded) {
+        return;
+    }
+    host_sram_loaded = true;
+    std::memset(host_sram, 0xFF, sizeof(host_sram));
+    if (const char* p = std::getenv("BS32X_SRAM")) {
+        if (FILE* f = std::fopen(p, "rb")) {
+            static_cast<void>(std::fread(host_sram, 1, sizeof(host_sram), f));
+            std::fclose(f);
+        }
+    }
+}
+
+void bs32x_sram_raw_read(int offset, void* buf, int len)
+{
+    host_sram_load();
+    std::memcpy(buf, host_sram + offset, len);
+}
+
+void bs32x_sram_raw_write(int offset, const void* data, int len)
+{
+    host_sram_load();
+    std::memcpy(host_sram + offset, data, len);
+    if (const char* p = std::getenv("BS32X_SRAM")) {
+        if (FILE* f = std::fopen(p, "wb")) {
+            std::fwrite(host_sram, 1, sizeof(host_sram), f);
+            std::fclose(f);
+        }
+    }
+}
+
 void bs32x_log(const char* message)
 {
     std::fprintf(stderr, "LOG: %s\n", message);

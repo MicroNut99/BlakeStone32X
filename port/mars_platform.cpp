@@ -517,7 +517,19 @@ bool bs32x_file_open_read(const char* name, const void** data, long* size)
 
 void bs32x_file_save(const char*, const void*, long)
 {
-    /* no save RAM yet: config and saved games are not kept */
+    /* other files are not kept (config, scores and the saved mission go to
+       the save RAM: bs32x_sram.cpp) */
+}
+
+/* the 68000 reads and writes the save RAM one byte at a time for us */
+void bs32x_sram_raw_read(int offset, void* buf, int len)
+{
+    Mars_ReadSRAM(static_cast<uint8_t*>(buf), offset, len);
+}
+
+void bs32x_sram_raw_write(int offset, const void* data, int len)
+{
+    Mars_WriteSRAM(static_cast<const uint8_t*>(data), offset, len);
 }
 
 bool bs32x_is_rom(const void* p)

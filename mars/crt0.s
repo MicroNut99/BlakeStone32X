@@ -53,7 +53,7 @@
         .ascii  "RA"                    /* External RAM */
         .byte   0xF8                    /* don't clear + odd bytes */
         .byte   0x20                    /* SRAM */
-        .long   0x00200001,0x00207FFF   /* SRAM start, end */
+        .long   0x00200001,0x0020FFFF   /* SRAM start, end: 32 KB in the odd bytes */
 
 !       .ascii  "            "          /* no SRAM */
 

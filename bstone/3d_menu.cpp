@@ -134,6 +134,13 @@ void DrawSwitchDescription(
 void cp_sound_volume(
     int16_t);
 
+#ifdef BS32X
+void WriteConfig();
+void bs32x_cp_level_select(int16_t);
+void bs32x_cp_lives(int16_t);
+static int bs32x_preset_episode = -1;
+#endif
+
 
 extern bool refresh_screen;
 
@@ -145,9 +152,19 @@ extern bool refresh_screen;
 // ===========================================================================
 
 CP_iteminfo MainItems = { MENU_X, MENU_Y, 12, MM_READ_THIS, 0, 9, { 77, 1, 154, 9, 1 } };
+#ifdef BS32X
+// BlakeStone32X: no SOUND VOLUME line; STARTING LIVES
 CP_iteminfo GopItems = { MENU_X, MENU_Y + 30, 4, 0, 0, 9, { 77, 1, 154, 9, 1 } };
+#else
+CP_iteminfo GopItems = { MENU_X, MENU_Y + 30, 4, 0, 0, 9, { 77, 1, 154, 9, 1 } };
+#endif
 CP_iteminfo SndItems = { SM_X, SM_Y, 6, 0, 0, 7, { 87, -1, 144, 7, 1 } };
+#ifdef BS32X
+// BlakeStone32X: one saved mission (the cart's save RAM)
+CP_iteminfo LSItems = { LSM_X, LSM_Y, 1, 0, 0, 8, { 86, -1, 144, 8, 1 } };
+#else
 CP_iteminfo LSItems = { LSM_X, LSM_Y, 10, 0, 0, 8, { 86, -1, 144, 8, 1 } };
+#endif
 CP_iteminfo CtlItems = { CTL_X, CTL_Y, 7, -1, 0, 9, { 87, 1, 174, 9, 1 } };
 CP_iteminfo CusItems = { CST_X, CST_Y + 7, 6, -1, 0, 15, { 54, -1, 203, 7, 1 } };
 CP_iteminfo NewEitems = { NE_X, NE_Y, 6, 0, 0, 16, { 43, -2, 119, 16, 1 } };
@@ -168,7 +185,7 @@ CP_itemtype MainMenu[] = {
     { AT_DISABLED, "", 0 },
     { AT_ENABLED, "BACK TO DEMO", CP_ExitOptions },
 #ifdef BS32X
-    { AT_DISABLED, "", 0 }      // BlakeStone32X: no LOGOFF (nothing to quit to)
+    { AT_ENABLED, "LEVEL SELECT", bs32x_cp_level_select }  // BlakeStone32X: instead of LOGOFF
 #else
     { AT_ENABLED, "LOGOFF", 0 }
 #endif
@@ -177,11 +194,16 @@ CP_itemtype MainMenu[] = {
 CP_itemtype GopMenu[] = {
     { AT_ENABLED, "SOUND", CP_Sound },
 
+#ifndef BS32X
     // BBi
     { AT_ENABLED, "SOUND VOLUME", cp_sound_volume },
+#endif
 
     { AT_ENABLED, "CONTROLS", CP_Control },
-    { AT_ENABLED, "SWITCHES", CP_Switches }
+    { AT_ENABLED, "SWITCHES", CP_Switches },
+#ifdef BS32X
+    { AT_ENABLED, "STARTING LIVES", bs32x_cp_lives },
+#endif
 };
 
 CP_itemtype SndMenu[] = {
@@ -1433,6 +1455,11 @@ void US_ControlPanel(
     //
     // DEALLOCATE EVERYTHING
     //
+#ifdef BS32X
+    // BlakeStone32X: keep the options in the save RAM
+    ::WriteConfig();
+    ::bs32x_settings_save();
+#endif
     CleanupControlPanel();
     if (!loadedgame) {
         StopMusic();
@@ -1680,6 +1707,12 @@ void CP_NewGame(
 
 firstpart:
 
+#ifdef BS32X
+    if (bs32x_preset_episode >= 0) {
+        // BlakeStone32X: the mission came from LEVEL SELECT
+        episode = bs32x_preset_episode;
+    } else
+#endif
     if (!::is_ps()) {
         DrawNewEpisode();
         do {
@@ -1715,7 +1748,11 @@ firstpart:
     //
     // ALREADY IN A GAME?
     //
+#ifdef BS32X
+    if (!::is_ps() && ingame && bs32x_preset_episode < 0) {
+#else
     if (!::is_ps() && ingame) {
+#endif
         if (!Confirm(CURGAME)) {
             ::MenuFadeOut();
             return;
@@ -1734,6 +1771,11 @@ secondpart:
     if (which < 0) {
         ::MenuFadeOut();
 
+#ifdef BS32X
+        if (bs32x_preset_episode >= 0) {
+            return;
+        }
+#endif
         if (!::is_ps()) {
             goto firstpart;
         } else {
@@ -2445,7 +2487,7 @@ void DrawLoadSaveScreen(
 
     DrawInstructions(IT_STANDARD);
 
-    for (i = 0; i < 10; i++) {
+    for (i = 0; i < LSItems.amount; i++) {
         PrintLSEntry(i, ENABLED_TEXT_COLOR);
     }
 
@@ -2544,7 +2586,17 @@ int16_t CP_SaveGame(
             VW_UpdateScreen();
 
 
+#ifdef BS32X
+            // BlakeStone32X: no keyboard; the name says where you are
+            if (::gamestate.mapon % 10 == 0) {
+                snprintf(input, sizeof(input), "MISSION %d  SECRET FLOOR", ::gamestate.episode + 1);
+            } else {
+                snprintf(input, sizeof(input), "MISSION %d  FLOOR %d", ::gamestate.episode + 1, ::gamestate.mapon);
+            }
+            if (true) {
+#else
             if (US_LineInput(LSM_X + LSItems.indent + 2, LSM_Y + which * LSItems.y_spacing, input, input, true, GAME_DESCRIPTION_LEN, LSM_W - LSItems.indent - 10)) {
+#endif
                 SaveGamesAvail[which] = 1;
                 strcpy(&SaveGameNames[which][0], input);
 
@@ -2590,6 +2642,11 @@ void CP_ExitOptions(
 void CP_Control(
     int16_t)
 {
+#ifdef BS32X
+    // BlakeStone32X: no mouse or joystick lines; straight to the pad buttons
+    CustomControls(0);
+    return;
+#endif
     enum {MOUSEENABLE, JOYENABLE, USEPORT2, PADENABLE, CALIBRATEJOY, MOUSESENS, CUSTOMIZE};
 
     int16_t which;
@@ -3623,8 +3680,19 @@ void SetupControlPanel()
     ReadGameNames();
 }
 
+#ifdef BS32X
+bool bs32x_saved_mission_desc(char* desc, int len);
+#endif
+
 void ReadGameNames()
 {
+#ifdef BS32X
+    SaveGamesAvail[0] = 0;
+    if (bs32x_saved_mission_desc(&SaveGameNames[0][0], GAME_DESCRIPTION_LEN + 1)) {
+        SaveGamesAvail[0] = 1;
+    }
+    return;
+#endif
     for (int i = 0; i < 10; ++i) {
         auto name = ::get_saved_game_base_name();
         name += static_cast<char>('0' + i);
@@ -4734,10 +4802,199 @@ void cp_sound_volume(
     MenuFadeIn();
 }
 
+#ifdef BS32X
+// ---------------------------------------------------------------------------
+// BlakeStone32X: LEVEL SELECT (mission, floor, lives) and STARTING LIVES
+// ---------------------------------------------------------------------------
+int bs32x_start_floor = 0;
+int bs32x_start_lives = 3;
+
+void bs32x_settings_load()
+{
+    uint8_t d[4];
+    if (bs32x_sram_read(BS32X_SRAM_SETTINGS, d, sizeof(d)) == 4 && d[0] == 1 &&
+        d[1] >= 1 && d[1] <= 10)
+    {
+        bs32x_start_lives = d[1];
+    }
+}
+
+void bs32x_settings_save()
+{
+    uint8_t d[4] = { 1, static_cast<uint8_t>(bs32x_start_lives), 0, 0 };
+    uint8_t old[4];
+    if (bs32x_sram_read(BS32X_SRAM_SETTINGS, old, sizeof(old)) == 4 && std::memcmp(old, d, 4) == 0) {
+        return;
+    }
+    bs32x_sram_write(BS32X_SRAM_SETTINGS, d, sizeof(d));
+}
+
+namespace {
+
+// a key press, once (waits for it to go up)
+bool bs32x_menu_key(ScanCode sc)
+{
+    if (!Keyboard[sc]) {
+        return false;
+    }
+    while (Keyboard[sc]) {
+        ::in_handle_events();
+    }
+    return true;
+}
+
+void bs32x_menu_hint(const char* text)
+{
+    fontnumber = 2;
+    WindowX = 48;
+    WindowY = INSTRUCTIONS_Y_POS;
+    WindowW = 236;
+    WindowH = 8;
+    VWB_Bar(WindowX, WindowY - 1, WindowW, WindowH, ::menu_background_color);
+    SETFONTCOLOR(TERM_SHADOW_COLOR, TERM_BACK_COLOR);
+    US_PrintCentered(text);
+    WindowX--;
+    WindowY--;
+    SETFONTCOLOR(INSTRUCTIONS_TEXT_COLOR, TERM_BACK_COLOR);
+    US_PrintCentered(text);
+}
+
+// rows: 0 mission, 1 floor, 2 lives; returns true to start
+bool bs32x_select_screen(
+    const char* title,
+    int first_row,
+    int& episode,
+    int& floor)
+{
+    const int last_row = 2;
+    int row = first_row;
+
+    ClearMScreen();
+    DrawMenuTitle(title);
+    bs32x_menu_hint(first_row == 0 ?
+        "UP/DN SELECTS - LF/RT CHANGES - A STARTS" :
+        "LF/RT CHANGES - A OR B EXITS");
+
+    auto draw = [&]() {
+        static const char* const labels[3] = { "MISSION", "FLOOR", "LIVES" };
+        fontnumber = 4;
+        for (int r = first_row; r <= last_row; ++r) {
+            int y = 74 + 22 * (r - first_row);
+            int value = (r == 0 ? episode + 1 : (r == 1 ? floor : bs32x_start_lives));
+            VWB_Bar(64, static_cast<int16_t>(y - 2), 192, 12, ::menu_background_color);
+            if (r == row) {
+                DrawOutline(64, static_cast<int16_t>(y - 2), 191, 11,
+                    HIGHLIGHT_TEXT_COLOR, HIGHLIGHT_TEXT_COLOR);
+            }
+            SETFONTCOLOR(r == row ? HIGHLIGHT_TEXT_COLOR : ENABLED_TEXT_COLOR, ::menu_background_color);
+            PrintX = 76;
+            PrintY = static_cast<uint16_t>(y);
+            US_Print(labels[r]);
+            PrintX = 180;
+            PrintY = static_cast<uint16_t>(y);
+            US_Print(("<  " + std::to_string(value) + "  >").c_str());
+        }
+        VW_UpdateScreen();
+    };
+
+    draw();
+    MenuFadeIn();
+    WaitKeyUp();
+
+    for (;;) {
+        ::in_handle_events();
+        int change = 0;
+
+        if (bs32x_menu_key(ScanCode::sc_up_arrow) && row > first_row) {
+            --row;
+            ::sd_play_player_sound(MOVEGUN1SND, bstone::AC_ITEM);
+            draw();
+        } else if (bs32x_menu_key(ScanCode::sc_down_arrow) && row < last_row) {
+            ++row;
+            ::sd_play_player_sound(MOVEGUN1SND, bstone::AC_ITEM);
+            draw();
+        } else if (bs32x_menu_key(ScanCode::sc_left_arrow)) {
+            change = -1;
+        } else if (bs32x_menu_key(ScanCode::sc_right_arrow)) {
+            change = 1;
+        } else if (bs32x_menu_key(ScanCode::sc_return)) {
+            ShootSnd();
+            return true;
+        } else if (bs32x_menu_key(ScanCode::sc_escape)) {
+            ::sd_play_player_sound(ESCPRESSEDSND, bstone::AC_ITEM);
+            return false;
+        }
+
+        if (change != 0) {
+            if (row == 0) {
+                int e = episode;
+                do {
+                    e += change;
+                } while (e >= 0 && e < 6 && !EpisodeSelect[e]);
+                if (e >= 0 && e < 6) {
+                    episode = e;
+                }
+            } else if (row == 1) {
+                floor = std::max(1, std::min(10, floor + change));
+            } else {
+                bs32x_start_lives = std::max(1, std::min(10, bs32x_start_lives + change));
+            }
+            ::sd_play_player_sound(MOVEGUN1SND, bstone::AC_ITEM);
+            draw();
+        }
+    }
+}
+
+} // namespace
+
+void bs32x_cp_level_select(
+    int16_t)
+{
+    static int episode = 0;
+    static int floor = 1;
+
+    if (ingame && !Confirm(CURGAME)) {
+        ::MenuFadeOut();
+        return;
+    }
+
+    CA_CacheScreen(BACKGROUND_SCREENPIC);
+    bool start = bs32x_select_screen("LEVEL SELECT", 0, episode, floor);
+    ::MenuFadeOut();
+
+    if (!start) {
+        return;
+    }
+
+    // then the difficulty, as for NEW MISSION
+    bs32x_preset_episode = episode;
+    bs32x_start_floor = floor;
+    CP_NewGame(0);
+    bs32x_preset_episode = -1;
+    if (!StartGame) {
+        bs32x_start_floor = 0;
+    }
+}
+
+void bs32x_cp_lives(
+    int16_t)
+{
+    int episode = 0;
+    int floor = 1;
+    CA_CacheScreen(BACKGROUND_SCREENPIC);
+    static_cast<void>(bs32x_select_screen("STARTING LIVES", 2, episode, floor));
+    ::MenuFadeOut();
+}
+#endif
+
 void MenuFadeOut()
 {
     if (::is_aog()) {
+#ifdef BS32X
+        ::VL_FadeOut(0, 255, 0, 0, 0, 10);     // BlakeStone32X: to black
+#else
         ::VL_FadeOut(0, 255, 44, 0, 0, 10);
+#endif
     } else {
         ::VL_FadeOut(0, 255, 40, 44, 44, 10);
     }

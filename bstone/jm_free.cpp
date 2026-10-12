@@ -786,7 +786,11 @@ void PreDemo()
         // Do A Red Flash!
 
         if (::is_aog()) {
+#ifdef BS32X
+            ::VL_FadeOut(0, 255, 0, 0, 0, 20);     // BlakeStone32X: to black, not red
+#else
             ::VL_FadeOut(0, 255, 39, 0, 0, 20);
+#endif
         } else {
             ::VL_FadeOut(0, 255, 0, 0, 0, 20);
         }
@@ -841,6 +845,9 @@ void InitGame()
 
     ::ReadConfig();
     ::read_high_scores();
+#ifdef BS32X
+    ::bs32x_settings_load();
+#endif
 
 
     //
