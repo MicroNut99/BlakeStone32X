@@ -33,6 +33,7 @@ void bs32x_in_key(int scan_code, bool is_pressed, char ascii);
 /* pad meaning: 0 menus/screens, 1 playing, 2 yes/no question; returns the old mode */
 enum { BS32X_IN_UI = 0, BS32X_IN_PLAY = 1, BS32X_IN_CONFIRM = 2 };
 int bs32x_set_input_mode(int mode);
+bool bs32x_pad_idle(void);                           /* no pad button held */
 extern volatile bool bs32x_next_weapon;                /* Y pressed while playing */
 #ifdef __cplusplus
 struct Bs32xInputMode {                               /* sets a pad meaning for one scope */

@@ -1058,6 +1058,10 @@ void binds_draw_menu()
             // playing keys (A, B, C, X, Z...), so a pad button can be given
             // to the action; START cancels
             Bs32xInputMode input_mode(BS32X_IN_PLAY);
+            // first all buttons let go (the A or START that chose the line)
+            while (!bs32x_pad_idle()) {
+                in_handle_events();
+            }
 #endif
             LastScan = ScanCode::sc_none;
             bool quit = false;

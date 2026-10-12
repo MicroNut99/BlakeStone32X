@@ -369,6 +369,11 @@ void bs32x_sync_second(int, int)
 {
 }
 
+bool bs32x_pad_idle(void)
+{
+    return true;
+}
+
 int bs32x_set_input_mode(int mode)
 {
     static int cur = 0;

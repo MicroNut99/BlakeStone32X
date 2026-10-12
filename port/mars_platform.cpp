@@ -440,10 +440,20 @@ void bs32x_vid_wait_vbl(int vbls)
 
 void bs32x_in_update(void)
 {
-    /* the buttons held at the 68000's last report (once per vblank) */
+    /* the buttons held at the 68000's reports (once per vblank); a button
+       only counts as let go when the last 3 reports all say so, so a
+       report that misses a held button can't make one press into two */
     bs32x_music_tick();
-    int v = Mars_ReadControllerState(0);
-    int pad = v < 0 ? 0 : v;
+    static unsigned last_vbl = ~0u;
+    static int reports[3];
+    if (mars_vblank_count != last_vbl) {
+        last_vbl = mars_vblank_count;
+        int v = Mars_ReadControllerState(0);
+        reports[2] = reports[1];
+        reports[1] = reports[0];
+        reports[0] = v < 0 ? 0 : (v & 0x0FFF);
+    }
+    int pad = reports[0] | reports[1] | reports[2];
     int changed = pad ^ pad_prev;
     if (changed) {
         const PadMap& m = pad_maps[in_mode];
@@ -465,6 +475,11 @@ volatile bool bs32x_next_weapon = false;
 
 /* a new pad meaning: let go of the buttons of the old one; a button that is
    still held only counts after it is pressed again (the d-pad carries over) */
+bool bs32x_pad_idle(void)
+{
+    return pad_prev == 0;
+}
+
 int bs32x_set_input_mode(int mode)
 {
     int old = in_mode;
