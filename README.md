@@ -23,6 +23,8 @@ go into this project.
   (the `.BS6` files) to build a cart.
 - Not Planet Strike. Only Aliens of Gold is supported.
 - Not finished or tested on every setup. It is tested in the Fusion 3.64 and PicoDrive emulators.
+- Known rare bug: once on real hardware, while browsing the menus after power-on, the game stopped with
+  "STOP SH2 EXCEPTION / ADDRESS ERROR / PC 00000001". It was not seen again and was not tracked down.
 
 ## Why and how
 
