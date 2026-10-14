@@ -459,12 +459,20 @@ void PollKeyboardMove()
         controly += value;
     }
 
+#ifdef BS32X_MARS
+    // BS32X: the pad turns at walking speed even when running (always run is the
+    // default, and 70 per tic was too fast on the d-pad)
+    const int turn_value = tics * BASETURN;
+#else
+    const int turn_value = value;
+#endif
+
     if (in_is_binding_pressed(e_bi_left)) {
-        controlx -= value;
+        controlx -= turn_value;
     }
 
     if (in_is_binding_pressed(e_bi_right)) {
-        controlx += value;
+        controlx += turn_value;
     }
 
     strafe_value = 0;
