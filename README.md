@@ -66,7 +66,8 @@ Buttons can be changed in GAME OPTIONS > CONTROLS.
 - **High score names:** up/down picks a letter, right adds one, left or B removes one, A is done.
 - **LEVEL SELECT** (main menu): pick the mission, floor 1-10 and lives, then the difficulty.
 - **GAME OPTIONS > STARTING LIVES:** 1 to 10 lives for every new mission.
-- **Removed:** LOGOFF (there is nothing to quit to), SOUND VOLUME, and keyboard/mouse/joystick setup.
+- **Removed:** LOGOFF (there is nothing to quit to), BACK TO DEMO (B still leaves the menu), SOUND VOLUME,
+  and keyboard/mouse/joystick setup.
 - Menu fades go to black.
 - **Turning:** the d-pad turns at 5/16 of the original running speed, also when running
   (always run is on by default; the original speed was too fast on the pad).
@@ -83,7 +84,7 @@ You need:
 make -f Makefile.game GENDEV=/path/to/toolchain GAMEDIR=/path/to/BLAKE
 ```
 
-Output: `build-game/BlakeStone32X_B15.32x`. Never commit the game data or the `.32x` file.
+Output: `build-game/BlakeStone32X_B16.32x`. Never commit the game data or the `.32x` file.
 
 ## Credits
 

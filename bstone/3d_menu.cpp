@@ -1500,11 +1500,21 @@ void DrawMainMenu()
     // CHANGE "MISSION" AND "DEMO"
     //
     if (ingame) {
+#ifdef BS32X
+        strcpy(MainMenu[MM_BACK_TO_DEMO].string, "BACK TO MISSION");
+#else
         strcpy(&MainMenu[MM_BACK_TO_DEMO].string[8], "MISSION");
+#endif
         MainMenu[MM_BACK_TO_DEMO].active = AT_READIT;
     } else {
+#ifdef BS32X
+        // BlakeStone32X: no "BACK TO DEMO" line (B still leaves the menu)
+        MainMenu[MM_BACK_TO_DEMO].string[0] = '\0';
+        MainMenu[MM_BACK_TO_DEMO].active = AT_DISABLED;
+#else
         strcpy(&MainMenu[MM_BACK_TO_DEMO].string[8], "DEMO");
         MainMenu[MM_BACK_TO_DEMO].active = AT_ENABLED;
+#endif
     }
 
     fontnumber = 4; // COAL
