@@ -3,8 +3,8 @@
 # Needs a PC C++ compiler too: the PC test build makes LATCHES.BS6 and GREXP.BS6.
 ROOTDIR  ?= $(GENDEV)
 GAMEDIR  ?= ../BLAKE
-NAME     ?= BlakeStone32X_B13
-TITLE    ?= BLAKE STONE 32X B13
+NAME     ?= BlakeStone32X_B14
+TITLE    ?= BLAKE STONE 32X B14
 
 PREFIX = $(ROOTDIR)/sh-elf/bin/sh-elf-
 CC = $(PREFIX)gcc

@@ -460,9 +460,9 @@ void PollKeyboardMove()
     }
 
 #ifdef BS32X_MARS
-    // BS32X: the pad turns at walking speed even when running (always run is the
-    // default, and 70 per tic was too fast on the d-pad)
-    const int turn_value = tics * BASETURN;
+    // BS32X: the pad turns at a quarter of the running speed (B12: 70 per tic,
+    // B13: 35, both too fast on the d-pad), also when running
+    const int turn_value = tics * BASETURN / 2;
 #else
     const int turn_value = value;
 #endif
