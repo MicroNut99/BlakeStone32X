@@ -2,6 +2,9 @@
 
 A port of Blake Stone: Aliens of Gold (1993, JAM Productions / Apogee) to the Sega 32X.
 
+**Status: finished.** The last version is B16. It runs on a real Genesis + 32X. No further work will
+go into this project.
+
 ## What this is
 
 - The original game code, taken from BStone (Boris Bendovsky's source port of the released Blake Stone source),
